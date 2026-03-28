@@ -2,20 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+class LocationPage extends StatefulWidget {
+  const LocationPage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<LocationPage> createState() => _LocationPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _currentIndex = 0;
+class _LocationPageState extends State<LocationPage> {
   final TextEditingController _searchController = TextEditingController();
-
   final MapController _mapController = MapController();
 
-  // 模拟好友数据
   final List<Map<String, dynamic>> _friends = [
     {
       'name': '我自己',
@@ -28,7 +25,6 @@ class _MyHomePageState extends State<MyHomePage> {
     },
   ];
 
-  // 倒计时
   int _countdownSeconds = 13 * 3600 + 53 * 60 + 55;
 
   @override
@@ -57,85 +53,49 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ===== 顶部搜索区域 =====
-            _buildSearchBar(),
-
-            // ===== 地图区域 =====
-            Expanded(
-              child: Stack(
+    return Column(
+      children: [
+        _buildSearchBar(),
+        Expanded(
+          child: Stack(
+            children: [
+              FlutterMap(
+                mapController: _mapController,
+                options: const MapOptions(
+                  initialCenter: LatLng(39.908823, 116.397470),
+                  initialZoom: 14,
+                ),
                 children: [
-                  // 地图
-                  FlutterMap(
-                    mapController: _mapController,
-                    options: const MapOptions(
-                      initialCenter: LatLng(39.908823, 116.397470),
-                      initialZoom: 14,
-                    ),
-                    children: [
-                      // 高德矢量地图瓦片
-                      TileLayer(
-                        urlTemplate:
-                            'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
-                        subdomains: const ['1', '2', '3', '4'],
-                        userAgentPackageName: 'com.example.trace_path',
-                      ),
-                      // 覆盖物层
-                      MarkerLayer(markers: _buildMarkers()),
-                    ],
+                  TileLayer(
+                    urlTemplate:
+                        'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+                    subdomains: const ['1', '2', '3', '4'],
+                    userAgentPackageName: 'com.example.trace_path',
                   ),
-
-                  // 好友示例气泡
-                  Positioned(
-                    left: 12,
-                    top: 12,
-                    child: _buildFriendBubble(),
-                  ),
-
-                  // 地图右下角控制按钮
-                  Positioned(
-                    right: 16,
-                    bottom: 80,
-                    child: Column(
-                      children: [
-                        _buildMapButton(Icons.add, '添加好友', () {}),
-                        const SizedBox(height: 8),
-                        _buildMapButton(Icons.my_location, '', () {
-                          _mapController.move(
-                            const LatLng(39.956, 116.618),
-                            14,
-                          );
-                        }),
-                      ],
-                    ),
-                  ),
-
-                  // 限时优惠横幅
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: _buildPromoBanner(),
-                  ),
+                  MarkerLayer(markers: _buildMarkers()),
                 ],
               ),
-            ),
-
-            // ===== 好友列表区域 =====
-            _buildFriendsList(),
-
-            // ===== 高德地图版权 =====
-            _buildAmapAttribution(),
-
-            // ===== 底部导航 =====
-            _buildBottomNav(),
-          ],
+              Positioned(left: 12, top: 12, child: _buildFriendBubble()),
+              Positioned(
+                right: 16,
+                bottom: 80,
+                child: Column(
+                  children: [
+                    _buildMapButton(Icons.add, '添加好友', () {}),
+                    const SizedBox(height: 8),
+                    _buildMapButton(Icons.my_location, '', () {
+                      _mapController.move(const LatLng(39.956, 116.618), 14);
+                    }),
+                  ],
+                ),
+              ),
+              Positioned(left: 0, right: 0, bottom: 0, child: _buildPromoBanner()),
+            ],
+          ),
         ),
-      ),
+        _buildFriendsList(),
+        _buildAmapAttribution(),
+      ],
     );
   }
 
@@ -192,11 +152,7 @@ class _MyHomePageState extends State<MyHomePage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2)),
         ],
       ),
       child: const Row(
@@ -212,7 +168,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Widget _buildMapButton(IconData icon, String label, VoidCallback onPressed) {
     if (label.isEmpty) {
-      // 定位按钮 - 白色圆形
       return GestureDetector(
         onTap: onPressed,
         child: Container(
@@ -221,18 +176,12 @@ class _MyHomePageState extends State<MyHomePage> {
           decoration: BoxDecoration(
             color: Colors.white,
             shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 6,
-              ),
-            ],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
           ),
           child: Icon(icon, color: Colors.black87, size: 22),
         ),
       );
     }
-    // 添加好友按钮 - 绿色圆形
     return GestureDetector(
       onTap: onPressed,
       child: Container(
@@ -246,10 +195,7 @@ class _MyHomePageState extends State<MyHomePage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: Colors.white, size: 18),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontSize: 7),
-            ),
+            Text(label, style: const TextStyle(color: Colors.white, fontSize: 7)),
           ],
         ),
       ),
@@ -258,7 +204,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   List<Marker> _buildMarkers() {
     return [
-      // 好友标记
       Marker(
         point: const LatLng(39.908, 116.396),
         width: 40,
@@ -270,12 +215,7 @@ class _MyHomePageState extends State<MyHomePage> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 3,
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3)],
               ),
               child: const Text('👩', style: TextStyle(fontSize: 18)),
             ),
@@ -283,7 +223,6 @@ class _MyHomePageState extends State<MyHomePage> {
           ],
         ),
       ),
-      // 自己的位置
       Marker(
         point: const LatLng(39.956, 116.618),
         width: 40,
@@ -295,12 +234,7 @@ class _MyHomePageState extends State<MyHomePage> {
               decoration: BoxDecoration(
                 color: const Color(0xFFFFD700),
                 borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 3,
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3)],
               ),
               child: const Text('🐤 我', style: TextStyle(fontSize: 12)),
             ),
@@ -326,7 +260,6 @@ class _MyHomePageState extends State<MyHomePage> {
       child: Row(
         children: [
           const SizedBox(width: 12),
-          // 优惠券图标
           Container(
             width: 40,
             height: 40,
@@ -334,12 +267,9 @@ class _MyHomePageState extends State<MyHomePage> {
               color: Colors.amber[100],
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Center(
-              child: Text('🎟️', style: TextStyle(fontSize: 22)),
-            ),
+            child: const Center(child: Text('🎟️', style: TextStyle(fontSize: 22))),
           ),
           const SizedBox(width: 10),
-          // 文字信息
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -355,40 +285,22 @@ class _MyHomePageState extends State<MyHomePage> {
                   children: [
                     Text(
                       _formatCountdown(_countdownSeconds),
-                      style: const TextStyle(
-                        color: Color(0xFFFFD700),
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(color: Color(0xFFFFD700), fontSize: 13, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(width: 6),
-                    const Text(
-                      '限时特惠',
-                      style: TextStyle(color: Color(0xFFFF6B6B), fontSize: 10),
-                    ),
+                    const Text('限时特惠', style: TextStyle(color: Color(0xFFFF6B6B), fontSize: 10)),
                   ],
                 ),
               ],
             ),
           ),
-          // 去使用按钮
           GestureDetector(
             onTap: () {},
             child: Container(
               margin: const EdgeInsets.only(right: 10),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Text(
-                '去使用',
-                style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+              child: const Text('去使用', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w500)),
             ),
           ),
         ],
@@ -404,14 +316,7 @@ class _MyHomePageState extends State<MyHomePage> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Text(
-              '我的好友 (${_friends.length})',
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-              ),
-            ),
+            child: Text('我的好友 (${_friends.length})', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87)),
           ),
           ...List.generate(_friends.length, (i) => _buildFriendItem(_friends[i])),
           const SizedBox(height: 4),
@@ -424,33 +329,22 @@ class _MyHomePageState extends State<MyHomePage> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
       child: Row(
         children: [
-          // 头像
           Text(friend['avatar'], style: const TextStyle(fontSize: 32)),
           const SizedBox(width: 10),
-          // 信息
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  friend['name'],
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
+                Text(friend['name'], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 Row(
                   children: [
                     const Icon(Icons.access_time, size: 12, color: Colors.grey),
                     const SizedBox(width: 2),
-                    Text(
-                      '${friend['date']} ${friend['time']}',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                    ),
+                    Text('${friend['date']} ${friend['time']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -458,27 +352,18 @@ class _MyHomePageState extends State<MyHomePage> {
                   children: [
                     const Icon(Icons.location_on, size: 12, color: Colors.grey),
                     const SizedBox(width: 2),
-                    Expanded(
-                      child: Text(
-                        friend['address'],
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+                    Expanded(child: Text(friend['address'], style: const TextStyle(fontSize: 11, color: Colors.grey), overflow: TextOverflow.ellipsis)),
                   ],
                 ),
               ],
             ),
           ),
-          // 历史轨迹按钮
           ElevatedButton(
             onPressed: () {},
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF00C853),
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             ),
             child: const Text('历史轨迹', style: TextStyle(fontSize: 11)),
@@ -505,70 +390,10 @@ class _MyHomePageState extends State<MyHomePage> {
             child: const Icon(Icons.navigation, size: 10, color: Colors.white),
           ),
           const SizedBox(width: 4),
-          const Text(
-            '高德地图',
-            style: TextStyle(fontSize: 10, color: Colors.grey),
-          ),
+          const Text('高德地图', style: TextStyle(fontSize: 10, color: Colors.grey)),
           const SizedBox(width: 4),
-          const Text(
-            '© 高德软件 | AutoNavi',
-            style: TextStyle(fontSize: 9, color: Colors.grey),
-          ),
+          const Text('© 高德软件 | AutoNavi', style: TextStyle(fontSize: 9, color: Colors.grey)),
         ],
-      ),
-    );
-  }
-
-  Widget _buildBottomNav() {
-    final tabs = [
-      {'icon': Icons.location_on, 'label': '定位'},
-      {'icon': Icons.route, 'label': '轨迹'},
-      {'icon': Icons.shield, 'label': '守护'},
-      {'icon': Icons.person, 'label': '我的'},
-    ];
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: List.generate(tabs.length, (i) {
-          final isActive = i == _currentIndex;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _currentIndex = i),
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      tabs[i]['icon'] as IconData,
-                      color: isActive ? const Color(0xFF00C853) : Colors.grey,
-                      size: 24,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      tabs[i]['label'] as String,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isActive ? const Color(0xFF00C853) : Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }),
       ),
     );
   }
