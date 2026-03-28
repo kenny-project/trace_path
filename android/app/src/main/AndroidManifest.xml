@@ -19,18 +19,20 @@
     <!-- Wake Lock -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- 电池优化白名单（小米/华为） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:label="trace_path"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
-        <!-- flutter_background_service 前台定位服务 -->
         <service
-            android:name="id.flutter.flutter_background_service.BackgroundService"
+            android:name=".LocationForegroundService"
+            android:enabled="true"
+            android:exported="false"
             android:foregroundServiceType="location"
-            android:exported="true"
-            android:stopWithTask="false"
-            tools:replace="android:exported" />
+            tools:replace="android:foregroundServiceType" />
 
         <activity
             android:name=".MainActivity"

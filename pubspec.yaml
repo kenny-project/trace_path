@@ -42,8 +42,6 @@ dependencies:
   # 定位服务
   geolocator: ^12.0.0
   flutter_local_notifications: ^17.0.0
-  flutter_background_service: ^5.0.0
-  flutter_background_service_android: ^6.0.0
   path_provider: ^2.1.0
   permission_handler: ^11.0.0
   csv: ^6.0.0

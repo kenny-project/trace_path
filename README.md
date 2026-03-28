@@ -68,3 +68,6 @@ flutter run -d "MEY AN00"
 adb backup -f trace_path_backup.ab -noapk com.example.trace_path
 # 解压备份文件
 java -jar abe.jar unpack trace_path_backup.ab trace_path_backup.tar
+
+# 查看日志
+adb logcat | grep -i "HomePage\|MinePage\|定位\|crash\|flutter"
