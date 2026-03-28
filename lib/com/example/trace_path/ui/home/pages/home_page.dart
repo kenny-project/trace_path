@@ -23,15 +23,49 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    print('[HomePage] build');
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: IndexedStack(
-          index: _currentIndex,
-          children: _pages,
-        ),
+        child: IndexedStack(index: _currentIndex, children: _pages),
       ),
       bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  void _showErrorDialog(BuildContext context, Object e, StackTrace stack) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('发生错误'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                e.toString(),
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                stack.toString(),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -59,7 +93,14 @@ class _HomePageState extends State<HomePage> {
           final isActive = i == _currentIndex;
           return Expanded(
             child: GestureDetector(
-              onTap: () => setState(() => _currentIndex = i),
+              onTap: () {
+                print('[HomePage] tab点击: index=$i, label=${tabs[i]['label']}');
+                try {
+                  setState(() => _currentIndex = i);
+                } catch (e, stack) {
+                  _showErrorDialog(context, e, stack);
+                }
+              },
               behavior: HitTestBehavior.opaque,
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 8),

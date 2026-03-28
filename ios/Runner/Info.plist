@@ -47,6 +47,14 @@
 			</array>
 		</dict>
 	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>TracePath 需要获取您的位置信息以实现实时定位功能</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>TracePath 需要在后台持续获取您的位置信息以实现实时追踪</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
