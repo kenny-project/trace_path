@@ -52,8 +52,9 @@ class _LocationPageState extends State<LocationPage> {
       });
       _mapController.move(LatLng(_myLat, _myLng), 14);
 
-      // 更新我的位置到好友服务
-      await _friendService.updateFriendLocation('18511698488', _myLat, _myLng);
+      // 获取地址并更新好友位置
+      final address = await _locationService.getAddressFromLatLng(_myLat, _myLng);
+      await _friendService.updateFriendLocation('18511698488', _myLat, _myLng, address: address);
     } else {
       if (mounted) {
         setState(() {
@@ -176,7 +177,7 @@ class _LocationPageState extends State<LocationPage> {
                     urlTemplate:
                         'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
                     subdomains: const ['1', '2', '3', '4'],
-                    userAgentPackageName: 'com.example.trace_path',
+                    userAgentPackageName: 'com.kenny.trace_path',
                     maxZoom: 18, // 高德底图最大18级
                   ),
                   MarkerLayer(markers: _buildMarkers()),
@@ -251,8 +252,26 @@ class _LocationPageState extends State<LocationPage> {
   /// 定位按钮
   Widget _buildLocationButton() {
     return GestureDetector(
-      onTap: () {
-        _mapController.move(LatLng(_myLat, _myLng), 14);
+      onTap: () async {
+        // 刷新当前位置
+        setState(() => _isLoadingLocation = true);
+        final position = await _locationService.getCurrentPosition();
+        if (position != null && mounted) {
+          setState(() {
+            _myLat = position.latitude;
+            _myLng = position.longitude;
+            _isLoadingLocation = false;
+          });
+          _mapController.move(LatLng(_myLat, _myLng), 14);
+          // 获取地址并更新
+          final address = await _locationService.getAddressFromLatLng(_myLat, _myLng);
+          await _friendService.updateFriendLocation('18511698488', _myLat, _myLng, address: address);
+          setState(() {}); // 刷新UI显示新地址
+        } else {
+          if (mounted) {
+            setState(() => _isLoadingLocation = false);
+          }
+        }
       },
       child: Container(
         width: 44,
@@ -267,8 +286,14 @@ class _LocationPageState extends State<LocationPage> {
             ),
           ],
         ),
-        child: const Icon(
-          Icons.my_location,
+        child: _isLoadingLocation
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(
+                Icons.my_location,
           color: Color(0xFF2D7AF6),
           size: 24,
         ),
@@ -502,7 +527,7 @@ class _LocationPageState extends State<LocationPage> {
 
     // 动态计算高度（标题栏始终显示）
     const headerHeight = 48.0; // 标题栏高度
-    const itemHeight = 80.0; // 每个好友项的高度
+    const itemHeight = 100.0; // 每个好友项的高度（100足够显示地址等信息）
     final totalHeight = headerHeight + (actualDisplayCount * itemHeight);
 
     return AnimatedContainer(
@@ -571,21 +596,15 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   Widget _buildFriendItem(Friend friend) {
-    // 计算相对时间显示
-    String timeAgo = '刚刚';
+    // 格式化时间显示
+    String timeStr = '';
     if (friend.lastUpdateTime != null) {
-      final diff = DateTime.now().difference(friend.lastUpdateTime!);
-      if (diff.inMinutes > 0) {
-        timeAgo = '${diff.inMinutes}分钟前';
-      } else if (diff.inHours > 0) {
-        timeAgo = '${diff.inHours}小时前';
-      } else if (diff.inDays > 0) {
-        timeAgo = '${diff.inDays}天前';
-      }
+      final dt = friend.lastUpdateTime!;
+      timeStr = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
       ),
@@ -609,7 +628,7 @@ class _LocationPageState extends State<LocationPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 名字 + VIP图标 + 时间
+                // 名字 + 时间
                 Row(
                   children: [
                     Flexible(
@@ -623,25 +642,19 @@ class _LocationPageState extends State<LocationPage> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    // 金色勋章图标（模拟VIP）
-                    const Icon(
-                      Icons.verified,
-                      size: 16,
-                      color: Color(0xFFFFB800), // 金色
-                    ),
                     const SizedBox(width: 8),
-                    Text(
-                      timeAgo,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF999999),
+                    if (timeStr.isNotEmpty)
+                      Text(
+                        timeStr,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF999999),
+                        ),
                       ),
-                    ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                // 城市 + 地址
+                const SizedBox(height: 4),
+                // 地址
                 if (friend.address != null)
                   Row(
                     children: [
@@ -650,27 +663,35 @@ class _LocationPageState extends State<LocationPage> {
                         size: 14,
                         color: Colors.grey[500],
                       ),
-                      const SizedBox(width: 2),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           friend.address!,
                           style: const TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF888888),
+                            color: Color(0xFF666666),
                           ),
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
+                  )
+                else if (friend.lat != null && friend.lng != null)
+                  Text(
+                    '定位: ${friend.lat!.toStringAsFixed(6)}, ${friend.lng!.toStringAsFixed(6)}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF999999),
+                    ),
                   ),
               ],
             ),
           ),
           const SizedBox(width: 8),
-          // 轨迹按钮（空心蓝框）
+          // 轨迹按钮
           OutlinedButton(
             onPressed: () {
-              // 移动地图到好友位置
               if (friend.lat != null && friend.lng != null) {
                 _mapController.move(LatLng(friend.lat!, friend.lng!), 14);
               }

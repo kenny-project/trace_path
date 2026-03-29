@@ -1,4 +1,4 @@
-package com.example.trace_path;
+package com.kenny.trace_path;
 
 import android.Manifest;
 import android.app.Notification;
@@ -61,7 +61,7 @@ public class LocationForegroundService extends Service {
         if (intent == null) return START_STICKY;
 
         String action = intent.getAction();
-        if ("com.example.trace_path.START".equals(action)) {
+        if ("com.kenny.trace_path.START".equals(action)) {
             android.util.Log.d("LocationForegroundService", "START action received, calling startForeground");
             isTracking = true;
             powerSaving = intent.getBooleanExtra("power_saving", false);
@@ -77,7 +77,7 @@ public class LocationForegroundService extends Service {
                 android.util.Log.e("LocationForegroundService", "startForeground 失败: " + e.getMessage());
             }
             startLocationUpdates(interval);
-        } else if ("com.example.trace_path.STOP".equals(action)) {
+        } else if ("com.kenny.trace_path.STOP".equals(action)) {
             isTracking = false;
             // 保存服务状态
             prefs.edit().putBoolean("service_running", false).apply();
@@ -85,7 +85,7 @@ public class LocationForegroundService extends Service {
             stopLocationUpdates();
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
-        } else if ("com.example.trace_path.UPDATE_CONFIG".equals(action)) {
+        } else if ("com.kenny.trace_path.UPDATE_CONFIG".equals(action)) {
             powerSaving = intent.getBooleanExtra("power_saving", false);
             long interval = intent.getLongExtra("interval", MIN_INTERVAL_DEFAULT);
             if (isTracking) {
@@ -120,7 +120,7 @@ public class LocationForegroundService extends Service {
             this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
 
         Intent stopIntent = new Intent(this, LocationForegroundService.class);
-        stopIntent.setAction("com.example.trace_path.STOP");
+        stopIntent.setAction("com.kenny.trace_path.STOP");
         PendingIntent stopPendingIntent = PendingIntent.getService(
             this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE);
 

@@ -1,4 +1,4 @@
-package com.example.trace_path;
+package com.kenny.trace_path;
 
 import android.content.Intent;
 import android.net.Uri;
@@ -8,7 +8,7 @@ import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.MethodChannel;
 
 public class MainActivity extends FlutterActivity {
-    private static final String CHANNEL = "com.example.trace_path/location_service";
+    private static final String CHANNEL = "com.kenny.trace_path/location_service";
 
     @Override
     public void configureFlutterEngine(FlutterEngine flutterEngine) {
@@ -107,13 +107,13 @@ public class MainActivity extends FlutterActivity {
                         interval = args.containsKey("interval") ? ((Number) args.get("interval")).intValue() : 10;
                         powerSaving = args.containsKey("powerSaving") && (Boolean) args.get("powerSaving");
                     }
-                    intent.setAction("com.example.trace_path.START");
+                    intent.setAction("com.kenny.trace_path.START");
                     intent.putExtra("interval", interval * 1000L);
                     intent.putExtra("powerSaving", powerSaving);
                     MainActivity.this.startForegroundService(intent);
                     result.success(true);
                 } else if (call.method.equals("stop")) {
-                    intent.setAction("com.example.trace_path.STOP");
+                    intent.setAction("com.kenny.trace_path.STOP");
                     MainActivity.this.startService(intent);
                     result.success(true);
                 } else if (call.method.equals("updateConfig")) {
@@ -121,7 +121,7 @@ public class MainActivity extends FlutterActivity {
                         java.util.Map args = (java.util.Map) call.arguments();
                         int interval = args.containsKey("interval") ? ((Number) args.get("interval")).intValue() : 10;
                         boolean powerSaving = args.containsKey("powerSaving") && (Boolean) args.get("powerSaving");
-                        intent.setAction("com.example.trace_path.UPDATE_CONFIG");
+                        intent.setAction("com.kenny.trace_path.UPDATE_CONFIG");
                         intent.putExtra("interval", interval * 1000L);
                         intent.putExtra("powerSaving", powerSaving);
                         MainActivity.this.startService(intent);

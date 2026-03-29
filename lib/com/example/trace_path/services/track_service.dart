@@ -104,7 +104,7 @@ class TrackService {
   Future<String> get _tracksRootDir async {
     try {
       // 通过MethodChannel获取Android的files目录路径
-      final result = await const MethodChannel('com.example.trace_path/location_service')
+      final result = await const MethodChannel('com.kenny.trace_path/location_service')
           .invokeMethod<String>('getFilesDir');
       if (result != null) {
         return '$result/$_folderName';
@@ -113,7 +113,7 @@ class TrackService {
       print('[TrackService] 获取files目录失败: $e');
     }
     // fallback到应用文档目录
-    final dir = await const MethodChannel('com.example.trace_path/location_service')
+    final dir = await const MethodChannel('com.kenny.trace_path/location_service')
         .invokeMethod<String>('getFilesDir');
     return dir ?? '';
   }

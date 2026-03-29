@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as Math;
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import 'location_settings_service.dart';
 
@@ -13,7 +15,7 @@ class BackgroundLocationService {
   factory BackgroundLocationService() => _instance;
   BackgroundLocationService._();
 
-  static const _channel = MethodChannel('com.example.trace_path/location_service');
+  static const _channel = MethodChannel('com.kenny.trace_path/location_service');
 
   final LocationSettingsService _settingsService = LocationSettingsService();
 
@@ -204,6 +206,46 @@ class BackgroundLocationService {
       return result ?? false;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// 根据经纬度获取地址描述（逆地址解析）
+  /// 使用 Nominatim (OpenStreetMap) 免费服务
+  Future<String?> getAddressFromLatLng(double lat, double lng) async {
+    try {
+      // 使用 OpenStreetMap Nominatim API (免费，无需API Key)
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1',
+      );
+      
+      final response = await http.get(
+        url,
+        headers: {'User-Agent': 'TracePath/1.0'},
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['address'] != null) {
+          final address = data['address'];
+          final road = address['road'] ?? '';
+          final suburb = address['suburb'] ?? '';
+          final city = address['city'] ?? address['town'] ?? address['village'] ?? '';
+          final district = address['city_district'] ?? address['district'] ?? '';
+          
+          // 构建地址: 城市 + 区/县 + 街道
+          String result = '';
+          if (city.isNotEmpty) result += city;
+          if (district.isNotEmpty && district != city) result += district;
+          if (suburb.isNotEmpty && suburb != district && suburb != city) result += suburb;
+          if (road.isNotEmpty) result += road;
+          
+          return result.isEmpty ? null : result;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('[BackgroundLocationService] getAddressFromLatLng error: $e');
+      return null;
     }
   }
 

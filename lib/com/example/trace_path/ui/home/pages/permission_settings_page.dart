@@ -811,7 +811,7 @@ class PermissionService {
     if (!Platform.isAndroid) return false;
 
     try {
-      final result = await const MethodChannel('com.example.trace_path/location_service')
+      final result = await const MethodChannel('com.kenny.trace_path/location_service')
           .invokeMethod<bool>('isIgnoringBatteryOptimizations');
       print('[PermissionService] isIgnoringBatteryOptimizations: $result');
       return result ?? false;
@@ -885,7 +885,7 @@ class PermissionService {
     print('[PermissionService] 电池优化跳转参数 - pkg: $pkg, cls: $cls');
 
     try {
-      final result = await const MethodChannel('com.example.trace_path/location_service')
+      final result = await const MethodChannel('com.kenny.trace_path/location_service')
           .invokeMethod('openBatteryOptimization', {'package': pkg, 'class': cls});
       print('[PermissionService] openBatteryOptimization 返回: $result');
       if (result != true) {
@@ -948,7 +948,7 @@ class PermissionService {
 
     try {
       if (pkg != null && cls != null) {
-        final result = await const MethodChannel('com.example.trace_path/location_service')
+        final result = await const MethodChannel('com.kenny.trace_path/location_service')
             .invokeMethod('openAutoStart', {'package': pkg, 'class': cls});
         print('[PermissionService] openAutoStart 返回: $result');
         if (result != true) {
@@ -969,7 +969,7 @@ class PermissionService {
 
   static Future<String> _getManufacturer() async {
     try {
-      final result = await const MethodChannel('com.example.trace_path/location_service')
+      final result = await const MethodChannel('com.kenny.trace_path/location_service')
           .invokeMethod<String>('getManufacturer');
       return (result ?? 'unknown').toLowerCase();
     } catch (e) {

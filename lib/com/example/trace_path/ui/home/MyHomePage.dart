@@ -82,7 +82,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         urlTemplate:
                             'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
                         subdomains: const ['1', '2', '3', '4'],
-                        userAgentPackageName: 'com.example.trace_path',
+                        userAgentPackageName: 'com.kenny.trace_path',
                       ),
                       // 覆盖物层
                       MarkerLayer(markers: _buildMarkers()),
