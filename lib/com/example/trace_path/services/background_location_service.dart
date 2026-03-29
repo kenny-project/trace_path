@@ -99,22 +99,25 @@ class BackgroundLocationService {
 
   /// 获取当前位置（WGS84转GCJ-02用于高德地图显示）
   Future<Position?> getCurrentPosition() async {
+    String timeStr(DateTime t) => '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}:${t.second.toString().padLeft(2,'0')}.${t.millisecond.toString().padLeft(3,'0')}';
+    
     try {
       final hasPermission = await _checkPermission();
       if (!hasPermission) {
-        print('[BackgroundLocationService] getCurrentPosition: 权限检查失败');
+        print('[BackgroundLocationService] GPS permission denied, time=${timeStr(DateTime.now())}');
         return null;
       }
 
-      print('[BackgroundLocationService] getCurrentPosition: 开始获取位置');
+      final reqStart = DateTime.now();
+      print('[BackgroundLocationService] GPS request START, time=${timeStr(reqStart)}');
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      print('[BackgroundLocationService] getCurrentPosition: 原始 WGS84 lat=${position.latitude}, lng=${position.longitude}');
+      final diff = DateTime.now().difference(reqStart);
+      print('[BackgroundLocationService] GPS result, time=${timeStr(DateTime.now())}, diff_time=${diff.inMilliseconds}ms, lat=${position.latitude}, lng=${position.longitude}');
 
       // WGS84 转 GCJ-02（中国坐标系）
       final gcj02 = wgs84ToGcj02(position.latitude, position.longitude);
-      print('[BackgroundLocationService] getCurrentPosition: 转换 GCJ-02 lat=${gcj02[0]}, lng=${gcj02[1]}');
 
       // 返回转换后的坐标（通过创建新的Position）
       return Position(

@@ -289,6 +289,22 @@ class _TrackPageState extends State<TrackPage> {
   Widget _buildDayItem(String phone, int year, int month, int day) {
     final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
     final dayName = _getDayName(year, month, day);
+    
+    // 判断是否是今天/昨天/前天
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final targetDate = DateTime(year, month, day);
+    final difference = today.difference(targetDate).inDays;
+    final isRecent = difference >= 0 && difference <= 2;
+    
+    // 显示内容
+    String displayText;
+    if (isRecent) {
+      // 今天/昨天/前天：显示时分秒
+      displayText = dayName;
+    } else {
+      displayText = '$dayName ($dateStr)';
+    }
 
     return GestureDetector(
       onTap: () => _openTrackMap(phone, year, month, day),
@@ -305,12 +321,23 @@ class _TrackPageState extends State<TrackPage> {
               child: Icon(Icons.access_time, size: 16, color: Colors.grey),
             ),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Text(
-                  '$dayName ($dateStr)',
-                  style: const TextStyle(fontSize: 13),
-                ),
+              child: FutureBuilder<DateTime?>(
+                future: isRecent ? _trackService.getFileModifyTime(phone, year, month, day) : Future.value(null),
+                builder: (context, snapshot) {
+                  String text = displayText;
+                  if (isRecent && snapshot.hasData) {
+                    final time = snapshot.data!;
+                    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:${time.second.toString().padLeft(2, '0')}';
+                    text = '$displayText $timeStr';
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Text(
+                      text,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  );
+                },
               ),
             ),
             IconButton(
@@ -325,11 +352,27 @@ class _TrackPageState extends State<TrackPage> {
 
   /// 扁平化日期显示（如20230329）
   Widget _buildDayItemFlat(String phone, String year, String month, String day) {
-    final dateStr = '$year$month$day';
+    final dateStr = '$year-${month.padLeft(2, '0')}-${day.padLeft(2, '0')}';
     final yearInt = int.parse(year);
     final monthInt = int.parse(month);
     final dayInt = int.parse(day);
     final dayName = _getDayName(yearInt, monthInt, dayInt);
+    
+    // 判断是否是今天/昨天/前天
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final targetDate = DateTime(yearInt, monthInt, dayInt);
+    final difference = today.difference(targetDate).inDays;
+    final isRecent = difference >= 0 && difference <= 2;
+    
+    // 显示内容
+    String displayText;
+    if (isRecent) {
+      // 今天/昨天/前天：显示时分秒
+      displayText = dayName;
+    } else {
+      displayText = '$dayName ($dateStr)';
+    }
 
     return GestureDetector(
       onTap: () => _openTrackMap(phone, yearInt, monthInt, dayInt),
@@ -346,12 +389,23 @@ class _TrackPageState extends State<TrackPage> {
               child: Icon(Icons.access_time, size: 16, color: AppColors.primary),
             ),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Text(
-                  '$dayName ($dateStr)',
-                  style: const TextStyle(fontSize: 13, color: AppColors.primary),
-                ),
+              child: FutureBuilder<DateTime?>(
+                future: isRecent ? _trackService.getFileModifyTime(phone, yearInt, monthInt, dayInt) : Future.value(null),
+                builder: (context, snapshot) {
+                  String text = displayText;
+                  if (isRecent && snapshot.hasData) {
+                    final time = snapshot.data!;
+                    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:${time.second.toString().padLeft(2, '0')}';
+                    text = '$displayText $timeStr';
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Text(
+                      text,
+                      style: const TextStyle(fontSize: 13, color: AppColors.primary),
+                    ),
+                  );
+                },
               ),
             ),
             IconButton(
@@ -371,8 +425,22 @@ class _TrackPageState extends State<TrackPage> {
 
   String _getDayName(int year, int month, int day) {
     final date = DateTime(year, month, day);
-    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    return weekdays[date.weekday - 1];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final targetDate = DateTime(year, month, day);
+    
+    final difference = today.difference(targetDate).inDays;
+    
+    if (difference == 0) {
+      return '今天';
+    } else if (difference == 1) {
+      return '昨天';
+    } else if (difference == 2) {
+      return '前天';
+    } else {
+      const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+      return weekdays[date.weekday - 1];
+    }
   }
 
   Future<void> _openTrackMap(String phone, int year, int month, int day) async {

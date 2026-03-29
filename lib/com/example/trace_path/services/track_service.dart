@@ -305,6 +305,22 @@ class TrackService {
     return hierarchy.keys.toList();
   }
 
+  /// 获取指定日期轨迹文件的修改时间
+  Future<DateTime?> getFileModifyTime(String phoneNumber, int year, int month, int day) async {
+    try {
+      final path = await _phoneDir(phoneNumber);
+      final datePath = '$year/${month.toString().padLeft(2, '0')}/${day.toString().padLeft(2, '0')}.csv';
+      final file = File('$path/$datePath');
+      if (await file.exists()) {
+        final stat = await file.stat();
+        return stat.modified;
+      }
+    } catch (e) {
+      print('[TrackService] 获取文件修改时间失败: $e');
+    }
+    return null;
+  }
+
   /// 获取指定手机号的年列表（按最新年份排序）
   Future<List<String>> getYearsWithTracks(String phoneNumber) async {
     final hierarchy = await getTrackHierarchy();

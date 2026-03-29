@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:trace_path/constants/colors.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -15,7 +16,8 @@ class LocationPage extends StatefulWidget {
   State<LocationPage> createState() => _LocationPageState();
 }
 
-class _LocationPageState extends State<LocationPage> {
+class _LocationPageState extends State<LocationPage>
+    with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
   final MapController _mapController = MapController();
   final BackgroundLocationService _locationService =
@@ -36,27 +38,152 @@ class _LocationPageState extends State<LocationPage> {
   double _currentZoom = 14;
   double _currentRotation = 0;
 
+  // 定时刷新
+  Timer? _locationTimer;
+  bool _isPageActive = true;
+  bool _isInitialLocationLoaded = false;
+
+  String timeStr(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}.${t.millisecond.toString().padLeft(3, '0')}';
+
   @override
   void initState() {
+    final initStart = DateTime.now();
+    print('[LocationPage] Page init START, time=${timeStr(initStart)}');
     super.initState();
-    _loadCurrentLocation();
+    WidgetsBinding.instance.addObserver(this);
     _friendService.init();
+
+    // 地图渲染完成回调（测量地图加载时间）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final mapLoadEnd = DateTime.now();
+      final diff = mapLoadEnd.difference(initStart);
+      print(
+        '[LocationPage] Map widget rendered, time=${timeStr(mapLoadEnd)}, diff_time=${diff.inMilliseconds}ms',
+      );
+    });
+
+    // 先加载上一次的保存位置，不阻塞UI
+    _loadSavedLocation();
+    // 再异步加载当前位置
+    _loadCurrentLocation();
+    _startLocationTimer();
+    print('[LocationPage] Page init END, time=${timeStr(DateTime.now())}');
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopLocationTimer();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _isPageActive = true;
+      _startLocationTimer();
+    } else if (state == AppLifecycleState.paused) {
+      _isPageActive = false;
+      _stopLocationTimer();
+    }
+  }
+
+  void _startLocationTimer() {
+    _stopLocationTimer();
+    if (_isPageActive) {
+      _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+        _refreshCurrentLocation();
+      });
+    }
+  }
+
+  void _stopLocationTimer() {
+    _locationTimer?.cancel();
+    _locationTimer = null;
+  }
+
+  Future<void> _refreshCurrentLocation() async {
+    if (!_isPageActive) return;
+    try {
+      final position = await _locationService.getCurrentPosition().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => null,
+      );
+      if (position != null && mounted && _isPageActive) {
+        setState(() {
+          _myLat = position.latitude;
+          _myLng = position.longitude;
+          _isLoadingLocation = false;
+        });
+        // 获取地址并更新
+        final address = await _locationService.getAddressFromLatLng(
+          _myLat,
+          _myLng,
+        );
+        await _friendService.updateFriendLocation(
+          '18511698488',
+          _myLat,
+          _myLng,
+          address: address,
+        );
+      }
+    } catch (e) {
+      print('[LocationPage] _refreshCurrentLocation error: $e');
+    }
+  }
+
+  /// 加载保存的上一次位置，不阻塞UI
+  Future<void> _loadSavedLocation() async {
+    final savedStart = DateTime.now();
+    final saved = await _friendService.getFriend('18511698488');
+    if (saved != null && saved.lat != null && saved.lng != null && mounted) {
+      _isInitialLocationLoaded = true;
+      setState(() {
+        _myLat = saved.lat!;
+        _myLng = saved.lng!;
+        _isLoadingLocation = false;
+      });
+      // 地图移到保存的位置
+      _mapController.move(LatLng(_myLat, _myLng), 14);
+    }
   }
 
   Future<void> _loadCurrentLocation() async {
-    final position = await _locationService.getCurrentPosition();
-    if (position != null && mounted) {
-      setState(() {
+    // 已经在子线程执行，不阻塞UI
+    try {
+      final position = await _locationService.getCurrentPosition().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => null,
+      );
+      // 确保在主线程更新UI
+      if (position != null && mounted) {
+        if (!_isInitialLocationLoaded) {
+          // 首次加载才更新位置，否则只用新位置更新好友
+          setState(() {
+            _myLat = position.latitude;
+            _myLng = position.longitude;
+            _isLoadingLocation = false;
+          });
+          _mapController.move(LatLng(_myLat, _myLng), 14);
+        }
+        // 获取地址并更新好友位置
+        final address = await _locationService.getAddressFromLatLng(
+          _myLat,
+          _myLng,
+        );
+        await _friendService.updateFriendLocation(
+          '18511698488',
+          position.latitude,
+          position.longitude,
+          address: address,
+        );
+        // 同步更新当前位置变量
         _myLat = position.latitude;
         _myLng = position.longitude;
-        _isLoadingLocation = false;
-      });
-      _mapController.move(LatLng(_myLat, _myLng), 14);
-
-      // 获取地址并更新好友位置
-      final address = await _locationService.getAddressFromLatLng(_myLat, _myLng);
-      await _friendService.updateFriendLocation('18511698488', _myLat, _myLng, address: address);
-    } else {
+      }
+    } catch (e) {
+      print('[LocationPage] _loadCurrentLocation error: $e');
       if (mounted) {
         setState(() {
           _isLoadingLocation = false;
@@ -101,9 +228,9 @@ class _LocationPageState extends State<LocationPage> {
       setState(() {
         _showSearchBar = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('${ls.LocationStrings.friendAdded} $phone')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${ls.LocationStrings.friendAdded} $phone')),
+      );
     } else {
       ScaffoldMessenger.of(
         context,
@@ -206,7 +333,7 @@ class _LocationPageState extends State<LocationPage> {
                 Positioned(
                   left: 16,
                   right: 16,
-                  top: 50,
+                  top: 20,
                   child: _buildSearchBar(),
                 ),
               // 高德版权信息（透明背景，浮在地图上）
@@ -244,7 +371,11 @@ class _LocationPageState extends State<LocationPage> {
         ),
         child: Transform.rotate(
           angle: _currentRotation * 3.14159 / 180, // 转换为弧度
-          child: const Icon(Icons.navigation, color: AppColors.primary, size: 28),
+          child: const Icon(
+            Icons.navigation,
+            color: AppColors.primary,
+            size: 28,
+          ),
         ),
       ),
     );
@@ -253,26 +384,9 @@ class _LocationPageState extends State<LocationPage> {
   /// 定位按钮
   Widget _buildLocationButton() {
     return GestureDetector(
-      onTap: () async {
-        // 刷新当前位置
-        setState(() => _isLoadingLocation = true);
-        final position = await _locationService.getCurrentPosition();
-        if (position != null && mounted) {
-          setState(() {
-            _myLat = position.latitude;
-            _myLng = position.longitude;
-            _isLoadingLocation = false;
-          });
-          _mapController.move(LatLng(_myLat, _myLng), 14);
-          // 获取地址并更新
-          final address = await _locationService.getAddressFromLatLng(_myLat, _myLng);
-          await _friendService.updateFriendLocation('18511698488', _myLat, _myLng, address: address);
-          setState(() {}); // 刷新UI显示新地址
-        } else {
-          if (mounted) {
-            setState(() => _isLoadingLocation = false);
-          }
-        }
+      onTap: () {
+        // 移动地图到当前位置
+        _mapController.move(LatLng(_myLat, _myLng), 14);
       },
       child: Container(
         width: 44,
@@ -293,11 +407,7 @@ class _LocationPageState extends State<LocationPage> {
                 height: 24,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : const Icon(
-                Icons.my_location,
-          color: AppColors.primary,
-          size: 24,
-        ),
+            : const Icon(Icons.my_location, color: AppColors.primary, size: 24),
       ),
     );
   }
@@ -444,7 +554,10 @@ class _LocationPageState extends State<LocationPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               elevation: 0,
             ),
-            child: const Text(ls.LocationStrings.searchFriend, style: TextStyle(fontSize: 13)),
+            child: const Text(
+              ls.LocationStrings.searchFriend,
+              style: TextStyle(fontSize: 13),
+            ),
           ),
           const SizedBox(width: 8),
         ],
@@ -601,7 +714,8 @@ class _LocationPageState extends State<LocationPage> {
     String timeStr = '';
     if (friend.lastUpdateTime != null) {
       final dt = friend.lastUpdateTime!;
-      timeStr = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      timeStr =
+          '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     }
 
     return Container(

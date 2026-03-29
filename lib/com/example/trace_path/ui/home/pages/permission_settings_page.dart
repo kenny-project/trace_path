@@ -54,8 +54,13 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage>
     final locationAlways = await Permission.locationAlways.status;
     final locationWhenInUse = await Permission.locationWhenInUse.status;
     final backgroundLocation = await Permission.location.status;
-    final batteryOpt = await PermissionService.isIgnoringBatteryOptimizations();
     final notification = await Permission.notification.status;
+    
+    // Battery optimization check - Android only
+    bool batteryOpt = true; // Default to true on iOS (not needed)
+    if (Platform.isAndroid) {
+      batteryOpt = await PermissionService.isIgnoringBatteryOptimizations();
+    }
 
     if (!mounted) return;
 
@@ -209,40 +214,46 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage>
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                _buildPermissionCard(
-                  icon: Icons.battery_std,
-                  title: ps.PermissionStrings.batteryTitle,
-                  description: ps.PermissionStrings.batteryDesc,
-                  buttonLabel: ps.PermissionStrings.quickSet,
-                  onTap: _openBatteryOptimizationSettings,
-                  helpOnTap: _showBatteryHelpDialog,
-                  statusWidget: _buildPermissionStatus(
-                    isGranted: _batteryOptimizationGranted,
-                    grantedText: ps.PermissionStrings.batteryGranted,
-                    notGrantedText: ps.PermissionStrings.batteryNotGranted,
-                    missingPermissions: [
-                      ps.PermissionStrings.batteryOptimization,
-                    ],
+                // Battery optimization card - Android only
+                if (Platform.isAndroid) ...[
+                  const SizedBox(height: 12),
+                  _buildPermissionCard(
+                    icon: Icons.battery_std,
+                    title: ps.PermissionStrings.batteryTitle,
+                    description: ps.PermissionStrings.batteryDesc,
+                    buttonLabel: ps.PermissionStrings.quickSet,
+                    onTap: _openBatteryOptimizationSettings,
+                    helpOnTap: _showBatteryHelpDialog,
+                    statusWidget: _buildPermissionStatus(
+                      isGranted: _batteryOptimizationGranted,
+                      grantedText: ps.PermissionStrings.batteryGranted,
+                      notGrantedText: ps.PermissionStrings.batteryNotGranted,
+                      missingPermissions: [
+                        ps.PermissionStrings.batteryOptimization,
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                _buildPermissionCard(
-                  icon: Icons.history,
-                  title: ps.PermissionStrings.backgroundTitle,
-                  description: ps.PermissionStrings.backgroundDesc,
-                  buttonLabel: ps.PermissionStrings.quickSet,
-                  onTap: _openAutoStartSettings,
-                  helpOnTap: _showAutoStartHelpDialog,
-                  statusWidget: _buildPermissionStatus(
-                    isGranted: _batteryOptimizationGranted,
-                    grantedText: ps.PermissionStrings.backgroundGranted,
-                    notGrantedText: ps.PermissionStrings.backgroundNotGranted,
-                    missingPermissions: [
-                      ps.PermissionStrings.backgroundPermission,
-                    ],
+                ],
+                // Autostart card - Android only
+                if (Platform.isAndroid) ...[
+                  const SizedBox(height: 12),
+                  _buildPermissionCard(
+                    icon: Icons.history,
+                    title: ps.PermissionStrings.backgroundTitle,
+                    description: ps.PermissionStrings.backgroundDesc,
+                    buttonLabel: ps.PermissionStrings.quickSet,
+                    onTap: _openAutoStartSettings,
+                    helpOnTap: _showAutoStartHelpDialog,
+                    statusWidget: _buildPermissionStatus(
+                      isGranted: _batteryOptimizationGranted,
+                      grantedText: ps.PermissionStrings.backgroundGranted,
+                      notGrantedText: ps.PermissionStrings.backgroundNotGranted,
+                      missingPermissions: [
+                        ps.PermissionStrings.backgroundPermission,
+                      ],
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 12),
                 _buildPermissionCard(
                   icon: Icons.notifications,
