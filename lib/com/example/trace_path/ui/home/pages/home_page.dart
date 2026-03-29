@@ -3,6 +3,8 @@ import 'location_page.dart';
 import 'track_page.dart';
 import 'guard_page.dart';
 import 'mine_page.dart';
+import 'package:trace_path/constants/strings.dart';
+import 'package:trace_path/constants/home_strings.dart' as hs;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -37,7 +39,7 @@ class _HomePageState extends State<HomePage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('发生错误'),
+        title: Text(hs.HomeStrings.errorTitle),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,7 +64,7 @@ class _HomePageState extends State<HomePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('确定'),
+            child: Text(hs.HomeStrings.confirm),
           ),
         ],
       ),
@@ -71,10 +73,10 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildBottomNav() {
     final tabs = [
-      {'icon': Icons.location_on, 'label': '定位'},
-      {'icon': Icons.route, 'label': '轨迹'},
-      {'icon': Icons.shield, 'label': '守护'},
-      {'icon': Icons.person, 'label': '我的'},
+      {'icon': Icons.location_on, 'label': hs.HomeStrings.tabLocation},
+      {'icon': Icons.route, 'label': hs.HomeStrings.tabTrack},
+      {'icon': Icons.shield, 'label': hs.HomeStrings.tabGuard},
+      {'icon': Icons.person, 'label': hs.HomeStrings.tabMine},
     ];
 
     return Container(

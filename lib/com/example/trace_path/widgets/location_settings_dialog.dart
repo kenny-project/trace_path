@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/location_settings_service.dart';
 import '../services/background_location_service.dart';
+import 'package:trace_path/constants/strings.dart';
+import 'package:trace_path/constants/widget_strings.dart' as ws;
 
-/// 实时定位设置弹窗
 class LocationSettingsDialog extends StatefulWidget {
   final LocationSettingsService settingsService;
   final BackgroundLocationService locationService;
@@ -41,48 +42,36 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 标题
-            const Center(
+            Center(
               child: Text(
-                '实时定位设置',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ws.WidgetStrings.locationSettingsTitle,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
             ),
             const SizedBox(height: 24),
-
-            // 开启实时定位
             _buildSwitchTile(
-              label: '开启实时定位',
+              label: ws.WidgetStrings.enableRealTimeLocation,
               icon: Icons.location_on,
               value: _enabled,
               onChanged: (v) => setState(() => _enabled = v),
             ),
-
             const Divider(height: 24),
-
-            // 定位频率
             _buildDropdownTile(),
-
             const SizedBox(height: 16),
-
-            // 省电模式
             _buildSwitchTile(
-              label: '省电模式',
+              label: ws.WidgetStrings.powerSavingMode,
               icon: Icons.battery_saver,
               value: _powerSaving,
-              subtitle: '静止时自动降低定位频率',
+              subtitle: ws.WidgetStrings.powerSavingDesc,
               onChanged: (v) => setState(() => _powerSaving = v),
             ),
-
             const SizedBox(height: 24),
-
-            // 按钮行
             Row(
               children: [
                 Expanded(
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('取消'),
+                    child: Text(ws.WidgetStrings.cancel),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -105,7 +94,7 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text('确认'),
+                        : Text(ws.WidgetStrings.confirm),
                   ),
                 ),
               ],
@@ -170,8 +159,8 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
           child: const Icon(Icons.timer, color: Color(0xFF50D2B2), size: 20),
         ),
         const SizedBox(width: 12),
-        const Expanded(
-          child: Text('定位频率', style: TextStyle(fontSize: 15)),
+        Expanded(
+          child: Text(ws.WidgetStrings.locationInterval, style: const TextStyle(fontSize: 15)),
         ),
         DropdownButton<int>(
           value: _intervalSeconds,
@@ -194,20 +183,18 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
     setState(() => _isLoading = true);
 
     try {
-      // 保存设置
       await widget.settingsService.update(
         enabled: _enabled,
         intervalSeconds: _intervalSeconds,
         powerSaving: _powerSaving,
       );
 
-      // 启动或停止服务
       if (_enabled) {
         final ok = await widget.locationService.start();
         if (!ok && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('定位权限被拒绝，请在设置中开启'),
+            SnackBar(
+              content: Text(ws.WidgetStrings.locationPermissionDenied),
               backgroundColor: Colors.orange,
             ),
           );
@@ -220,7 +207,7 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('启动失败: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('${ws.WidgetStrings.startFailed}: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {

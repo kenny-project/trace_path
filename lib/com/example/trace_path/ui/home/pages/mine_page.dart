@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../../services/location_settings_service.dart';
 import '../../../services/background_location_service.dart';
 import '../../../widgets/location_settings_dialog.dart';
+import 'permission_settings_page.dart';
+import 'package:trace_path/constants/strings.dart';
+import 'package:trace_path/constants/mine_strings.dart' as ms;
 
 class MinePage extends StatefulWidget {
   const MinePage({super.key});
@@ -11,7 +14,6 @@ class MinePage extends StatefulWidget {
 }
 
 class _MinePageState extends State<MinePage> {
-  // 服务单例
   final LocationSettingsService _settingsService = LocationSettingsService();
   final BackgroundLocationService _locationService = BackgroundLocationService();
 
@@ -23,7 +25,6 @@ class _MinePageState extends State<MinePage> {
     });
   }
 
-  // 截图实测色值
   static const Color primaryGreen = Color(0xFF50D2B2);
   static const Color logoutRed = Color(0xFFFF5E3A);
   static const Color dividerColor = Color(0xFFEEEEEE);
@@ -37,48 +38,43 @@ class _MinePageState extends State<MinePage> {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // ===== 1. 头像 + 登录提示 =====
               _buildAvatarSection(),
-
               const SizedBox(height: 16),
-
-              // ===== 2. 三个图标按钮 =====
               _buildQuickActions(),
-
               const SizedBox(height: 16),
               const Divider(height: 1, color: dividerColor),
-
-              // ===== 3. 菜单列表 =====
               _buildMenuItem(
                 icon: Icons.location_on,
-                label: '实时定位',
+                label: ms.MineStrings.realTimeLocation,
                 onTap: _showLocationSettings,
               ),
               const Divider(height: 1, color: dividerColor, indent: 56),
               _buildMenuItem(
                 icon: Icons.settings,
-                label: '权限设置',
-                onTap: () {},
+                label: ms.MineStrings.permissionSettings,
+                onTap: () {
+                  print('[MinePage] 点击: 权限设置');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PermissionSettingsPage()),
+                  );
+                },
               ),
               const Divider(height: 1, color: dividerColor, indent: 56),
               _buildMenuItem(
                 icon: Icons.phone,
-                label: '联系我们',
+                label: ms.MineStrings.contactUs,
                 onTap: () {},
               ),
               const Divider(height: 1, color: dividerColor, indent: 56),
               _buildMenuItem(
                 icon: Icons.info,
-                label: '关于我们',
+                label: ms.MineStrings.aboutUs,
                 onTap: () {},
               ),
-
               const SizedBox(height: 16),
               const Divider(height: 1, color: dividerColor),
-
-              // ===== 4. 退出按钮 =====
               _buildLogoutButton(),
-
               const SizedBox(height: 24),
             ],
           ),
@@ -109,7 +105,7 @@ class _MinePageState extends State<MinePage> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('发生错误'),
+          title: Text(ms.MineStrings.errorTitle),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -122,7 +118,7 @@ class _MinePageState extends State<MinePage> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('确定')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ms.MineStrings.confirm)),
           ],
         ),
       );
@@ -134,9 +130,8 @@ class _MinePageState extends State<MinePage> {
       padding: const EdgeInsets.symmetric(vertical: 32),
       child: Column(
         children: [
-          // 头像
           GestureDetector(
-            onTap: () {}, // 登录
+            onTap: () {},
             child: Container(
               width: 72,
               height: 72,
@@ -148,12 +143,11 @@ class _MinePageState extends State<MinePage> {
             ),
           ),
           const SizedBox(height: 12),
-          // 点击登录
           GestureDetector(
             onTap: () {},
-            child: const Text(
-              '点击登录',
-              style: TextStyle(
+            child: Text(
+              ms.MineStrings.clickToLogin,
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: Colors.black87,
@@ -161,13 +155,12 @@ class _MinePageState extends State<MinePage> {
             ),
           ),
           const SizedBox(height: 4),
-          // 开通VIP
           GestureDetector(
             onTap: () {},
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('开通VIP', style: TextStyle(fontSize: 13, color: greyText)),
+                Text(ms.MineStrings.openVip, style: TextStyle(fontSize: 13, color: greyText)),
                 const SizedBox(width: 2),
                 Icon(Icons.chevron_right, size: 16, color: greyText),
               ],
@@ -184,9 +177,9 @@ class _MinePageState extends State<MinePage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _buildActionItem(Icons.share, '点击分享', () {}),
-          _buildActionItem(Icons.question_answer, '常见问题', () {}),
-          _buildActionItem(Icons.menu_book, '实用教程', () {}),
+          _buildActionItem(Icons.share, ms.MineStrings.clickToShare, () {}),
+          _buildActionItem(Icons.question_answer, ms.MineStrings.faq, () {}),
+          _buildActionItem(Icons.menu_book, ms.MineStrings.tutorial, () {}),
         ],
       ),
     );
@@ -260,7 +253,7 @@ class _MinePageState extends State<MinePage> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
             elevation: 0,
           ),
-          child: const Text('退出当前账户', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          child: Text(ms.MineStrings.logout, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         ),
       ),
     );

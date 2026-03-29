@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:trace_path/constants/strings.dart';
+import 'package:trace_path/constants/location_strings.dart' as ls;
 
 class LocationPage extends StatefulWidget {
   const LocationPage({super.key});
@@ -15,8 +17,8 @@ class _LocationPageState extends State<LocationPage> {
 
   final List<Map<String, dynamic>> _friends = [
     {
-      'name': '我自己',
-      'avatar': '🐤',
+      'name': ls.LocationStrings.selfName,
+      'avatar': ls.LocationStrings.selfEmoji,
       'time': '17:21',
       'date': '2026-03-28',
       'address': '北京市朝阳区常营中路179号靠近富力阳光美园',
@@ -81,7 +83,7 @@ class _LocationPageState extends State<LocationPage> {
                 bottom: 80,
                 child: Column(
                   children: [
-                    _buildMapButton(Icons.add, '添加好友', () {}),
+                    _buildMapButton(Icons.add, ls.LocationStrings.addFriend, () {}),
                     const SizedBox(height: 8),
                     _buildMapButton(Icons.my_location, '', () {
                       _mapController.move(const LatLng(39.956, 116.618), 14);
@@ -114,12 +116,12 @@ class _LocationPageState extends State<LocationPage> {
               ),
               child: TextField(
                 controller: _searchController,
-                decoration: const InputDecoration(
-                  hintText: '请输入对方手机号码',
-                  hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
-                  prefixIcon: Icon(Icons.search, color: Colors.grey),
+                decoration: InputDecoration(
+                  hintText: ls.LocationStrings.addFriendHint,
+                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
               ),
             ),
@@ -137,7 +139,7 @@ class _LocationPageState extends State<LocationPage> {
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
               ),
-              child: const Text('添加好友', style: TextStyle(fontSize: 13)),
+              child: Text(ls.LocationStrings.addFriend, style: const TextStyle(fontSize: 13)),
             ),
           ),
         ],
@@ -155,12 +157,12 @@ class _LocationPageState extends State<LocationPage> {
           BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2)),
         ],
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('👩', style: TextStyle(fontSize: 18)),
-          SizedBox(width: 4),
-          Text('好友示例', style: TextStyle(fontSize: 12, color: Colors.black87)),
+          Text(ls.LocationStrings.friendEmoji, style: const TextStyle(fontSize: 18)),
+          const SizedBox(width: 4),
+          Text(ls.LocationStrings.friendExample, style: const TextStyle(fontSize: 12, color: Colors.black87)),
         ],
       ),
     );
@@ -217,7 +219,7 @@ class _LocationPageState extends State<LocationPage> {
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3)],
               ),
-              child: const Text('👩', style: TextStyle(fontSize: 18)),
+              child: Text(ls.LocationStrings.friendEmoji, style: const TextStyle(fontSize: 18)),
             ),
             const Icon(Icons.location_on, color: Colors.blue, size: 24),
           ],
@@ -236,7 +238,7 @@ class _LocationPageState extends State<LocationPage> {
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3)],
               ),
-              child: const Text('🐤 我', style: TextStyle(fontSize: 12)),
+              child: Text('🐤 我', style: const TextStyle(fontSize: 12)),
             ),
             const Icon(Icons.location_on, color: Colors.red, size: 24),
           ],
@@ -267,7 +269,7 @@ class _LocationPageState extends State<LocationPage> {
               color: Colors.amber[100],
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Center(child: Text('🎟️', style: TextStyle(fontSize: 22))),
+            child: Center(child: Text('🎟️', style: const TextStyle(fontSize: 22))),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -276,7 +278,7 @@ class _LocationPageState extends State<LocationPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '您有一个未支付订单的专属优惠券-¥240',
+                  ls.LocationStrings.couponDesc,
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -288,7 +290,7 @@ class _LocationPageState extends State<LocationPage> {
                       style: const TextStyle(color: Color(0xFFFFD700), fontSize: 13, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(width: 6),
-                    const Text('限时特惠', style: TextStyle(color: Color(0xFFFF6B6B), fontSize: 10)),
+                    Text(ls.LocationStrings.limitedOffer, style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 10)),
                   ],
                 ),
               ],
@@ -300,7 +302,7 @@ class _LocationPageState extends State<LocationPage> {
               margin: const EdgeInsets.only(right: 10),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-              child: const Text('去使用', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w500)),
+              child: Text(ls.LocationStrings.useNow, style: const TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w500)),
             ),
           ),
         ],
@@ -316,7 +318,7 @@ class _LocationPageState extends State<LocationPage> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Text('我的好友 (${_friends.length})', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87)),
+            child: Text('${ls.LocationStrings.myFriends} (${_friends.length})', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87)),
           ),
           ...List.generate(_friends.length, (i) => _buildFriendItem(_friends[i])),
           const SizedBox(height: 4),
@@ -366,7 +368,7 @@ class _LocationPageState extends State<LocationPage> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             ),
-            child: const Text('历史轨迹', style: TextStyle(fontSize: 11)),
+            child: Text(ls.LocationStrings.historyTrack, style: const TextStyle(fontSize: 11)),
           ),
         ],
       ),
@@ -390,9 +392,9 @@ class _LocationPageState extends State<LocationPage> {
             child: const Icon(Icons.navigation, size: 10, color: Colors.white),
           ),
           const SizedBox(width: 4),
-          const Text('高德地图', style: TextStyle(fontSize: 10, color: Colors.grey)),
+          Text(ls.LocationStrings.amapAttr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
           const SizedBox(width: 4),
-          const Text('© 高德软件 | AutoNavi', style: TextStyle(fontSize: 9, color: Colors.grey)),
+          Text(ls.LocationStrings.amapCopyright, style: const TextStyle(fontSize: 9, color: Colors.grey)),
         ],
       ),
     );
