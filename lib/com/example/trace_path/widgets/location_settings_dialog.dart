@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trace_path/constants/colors.dart';
 import '../services/location_settings_service.dart';
 import '../services/background_location_service.dart';
 import 'package:trace_path/constants/strings.dart';
@@ -92,7 +93,7 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _onConfirm,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF50D2B2),
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
@@ -131,10 +132,10 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: const Color(0xFF50D2B2).withValues(alpha: 0.1),
+            color: AppColors.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: const Color(0xFF50D2B2), size: 20),
+          child: Icon(icon, color: AppColors.primary, size: 20),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -157,7 +158,7 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
         ),
         Switch(
           value: value,
-          activeColor: const Color(0xFF50D2B2),
+          activeColor: AppColors.primary,
           onChanged: onChanged,
         ),
       ],
@@ -171,10 +172,10 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: const Color(0xFF50D2B2).withValues(alpha: 0.1),
+            color: AppColors.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const Icon(Icons.timer, color: Color(0xFF50D2B2), size: 20),
+          child: const Icon(Icons.timer, color: AppColors.primary, size: 20),
         ),
         const SizedBox(width: 12),
         Expanded(

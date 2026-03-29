@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:trace_path/constants/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -15,8 +16,9 @@ class PermissionSettingsPage extends StatefulWidget {
   State<PermissionSettingsPage> createState() => _PermissionSettingsPageState();
 }
 
-class _PermissionSettingsPageState extends State<PermissionSettingsPage> with WidgetsBindingObserver {
-  static const Color primaryGreen = Color(0xFF50D2B2);
+class _PermissionSettingsPageState extends State<PermissionSettingsPage>
+    with WidgetsBindingObserver {
+  static const Color primaryGreen = AppColors.primary;
 
   // 权限状态
   bool _locationAlwaysGranted = false;
@@ -73,7 +75,7 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
     required String notGrantedText,
     required List<String> missingPermissions,
   }) {
-    final Color statusColor = isGranted ? const Color(0xFF4CAF50) : const Color(0xFFF44336);
+    final Color statusColor = isGranted ? AppColors.primary : AppColors.danger;
     final String displayText = isGranted ? grantedText : notGrantedText;
     final List<String> displayMissing = isGranted ? [] : missingPermissions;
 
@@ -103,7 +105,7 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF3E0),
+              color: AppColors.lightYellow,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
@@ -114,30 +116,35 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFE65100),
+                    color: AppColors.orange,
                   ),
                 ),
                 const SizedBox(height: 4),
-                ...displayMissing.map((p) => Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Row(
-                    children: [
-                      const Text(
-                        '• ',
-                        style: TextStyle(color: Color(0xFFF44336), fontSize: 12),
-                      ),
-                      Expanded(
-                        child: Text(
-                          p,
-                          style: const TextStyle(
-                            color: Color(0xFFF44336),
+                ...displayMissing.map(
+                  (p) => Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Row(
+                      children: [
+                        const Text(
+                          '• ',
+                          style: TextStyle(
+                            color: AppColors.danger,
                             fontSize: 12,
                           ),
                         ),
-                      ),
-                    ],
+                        Expanded(
+                          child: Text(
+                            p,
+                            style: const TextStyle(
+                              color: AppColors.danger,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                )),
+                ),
               ],
             ),
           ),
@@ -159,7 +166,10 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
         ),
         title: Text(
           ps.PermissionStrings.pageTitle,
-          style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         centerTitle: true,
         actions: [
@@ -185,13 +195,17 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
                   onTap: _openLocationSettings,
                   helpOnTap: _showLocationHelpDialog,
                   statusWidget: _buildPermissionStatus(
-                    isGranted: _locationAlwaysGranted && _backgroundLocationGranted,
+                    isGranted:
+                        _locationAlwaysGranted && _backgroundLocationGranted,
                     grantedText: ps.PermissionStrings.locationGranted,
                     notGrantedText: ps.PermissionStrings.locationNotGranted,
                     missingPermissions: [
-                      if (!_backgroundLocationGranted) ps.PermissionStrings.backgroundLocation,
-                      if (!_locationWhenInUseGranted) ps.PermissionStrings.foregroundLocation,
-                      if (!_locationAlwaysGranted) ps.PermissionStrings.alwaysLocation,
+                      if (!_backgroundLocationGranted)
+                        ps.PermissionStrings.backgroundLocation,
+                      if (!_locationWhenInUseGranted)
+                        ps.PermissionStrings.foregroundLocation,
+                      if (!_locationAlwaysGranted)
+                        ps.PermissionStrings.alwaysLocation,
                     ],
                   ),
                 ),
@@ -207,7 +221,9 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
                     isGranted: _batteryOptimizationGranted,
                     grantedText: ps.PermissionStrings.batteryGranted,
                     notGrantedText: ps.PermissionStrings.batteryNotGranted,
-                    missingPermissions: [ps.PermissionStrings.batteryOptimization],
+                    missingPermissions: [
+                      ps.PermissionStrings.batteryOptimization,
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -222,7 +238,9 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
                     isGranted: _batteryOptimizationGranted,
                     grantedText: ps.PermissionStrings.backgroundGranted,
                     notGrantedText: ps.PermissionStrings.backgroundNotGranted,
-                    missingPermissions: [ps.PermissionStrings.backgroundPermission],
+                    missingPermissions: [
+                      ps.PermissionStrings.backgroundPermission,
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -237,7 +255,9 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
                     isGranted: _notificationGranted,
                     grantedText: ps.PermissionStrings.notificationGranted,
                     notGrantedText: ps.PermissionStrings.notificationNotGranted,
-                    missingPermissions: [ps.PermissionStrings.notificationPermission],
+                    missingPermissions: [
+                      ps.PermissionStrings.notificationPermission,
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -298,7 +318,11 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
                       color: Colors.grey.shade200,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.help_outline, color: Colors.grey.shade600, size: 18),
+                    child: Icon(
+                      Icons.help_outline,
+                      color: Colors.grey.shade600,
+                      size: 18,
+                    ),
                   ),
                 ),
               GestureDetector(
@@ -312,7 +336,10 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
                   });
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: primaryGreen,
                     borderRadius: BorderRadius.circular(20),
@@ -332,7 +359,11 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
           const SizedBox(height: 10),
           Text(
             description,
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.5),
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 10),
           statusWidget,
@@ -345,14 +376,14 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
+        color: AppColors.lightYellow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFFE0B2)),
+        border: Border.all(color: AppColors.lightOrangeBorder),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber, color: Color(0xFFFF6B00), size: 20),
+          const Icon(Icons.warning_amber, color: AppColors.warningOrange, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -363,13 +394,17 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> with Wi
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFE65100),
+                    color: AppColors.orange,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   ps.PermissionStrings.warningContent,
-                  style: TextStyle(fontSize: 13, color: Colors.orange.shade800, height: 1.5),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.orange.shade800,
+                    height: 1.5,
+                  ),
                 ),
               ],
             ),
@@ -513,12 +548,22 @@ class _LocationHelpContent extends StatelessWidget {
     final helpInfo = BrandStrings.getBatteryHelpInfo(brand);
     return _HelpContentBuilder(
       icon: Icons.location_on,
-      title: '${helpInfo['brandName']} ${ps.PermissionStrings.locationHelpTitle}',
+      title:
+          '${helpInfo['brandName']} ${ps.PermissionStrings.locationHelpTitle}',
       path: ps.PermissionStrings.locationHelpPath,
       switches: [
-        {'name': ps.PermissionStrings.locationHelpStep1Name, 'desc': ps.PermissionStrings.locationHelpStep1Desc},
-        {'name': ps.PermissionStrings.locationHelpStep2Name, 'desc': ps.PermissionStrings.locationHelpStep2Desc},
-        {'name': ps.PermissionStrings.locationHelpStep3Name, 'desc': ps.PermissionStrings.locationHelpStep3Desc},
+        {
+          'name': ps.PermissionStrings.locationHelpStep1Name,
+          'desc': ps.PermissionStrings.locationHelpStep1Desc,
+        },
+        {
+          'name': ps.PermissionStrings.locationHelpStep2Name,
+          'desc': ps.PermissionStrings.locationHelpStep2Desc,
+        },
+        {
+          'name': ps.PermissionStrings.locationHelpStep3Name,
+          'desc': ps.PermissionStrings.locationHelpStep3Desc,
+        },
       ],
     );
   }
@@ -535,7 +580,8 @@ class _BatteryHelpContent extends StatelessWidget {
     final helpInfo = BrandStrings.getBatteryHelpInfo(brand);
     return _HelpContentBuilder(
       icon: Icons.battery_std,
-      title: '${helpInfo['brandName']} ${ps.PermissionStrings.batteryHelpTitle}',
+      title:
+          '${helpInfo['brandName']} ${ps.PermissionStrings.batteryHelpTitle}',
       path: helpInfo['path'] as String,
       switches: helpInfo['switches'] as List<Map<String, String>>,
     );
@@ -553,11 +599,18 @@ class _NotificationHelpContent extends StatelessWidget {
     final helpInfo = BrandStrings.getBatteryHelpInfo(brand);
     return _HelpContentBuilder(
       icon: Icons.notifications,
-      title: '${helpInfo['brandName']} ${ps.PermissionStrings.notificationHelpTitle}',
+      title:
+          '${helpInfo['brandName']} ${ps.PermissionStrings.notificationHelpTitle}',
       path: ps.PermissionStrings.notificationHelpPath,
       switches: [
-        {'name': ps.PermissionStrings.notificationHelpStep1Name, 'desc': ps.PermissionStrings.notificationHelpStep1Desc},
-        {'name': ps.PermissionStrings.notificationHelpStep2Name, 'desc': ps.PermissionStrings.notificationHelpStep2Desc},
+        {
+          'name': ps.PermissionStrings.notificationHelpStep1Name,
+          'desc': ps.PermissionStrings.notificationHelpStep1Desc,
+        },
+        {
+          'name': ps.PermissionStrings.notificationHelpStep2Name,
+          'desc': ps.PermissionStrings.notificationHelpStep2Desc,
+        },
       ],
     );
   }
@@ -587,7 +640,7 @@ class _HelpContentBuilder extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, color: const Color(0xFF50D2B2), size: 24),
+              Icon(icon, color: AppColors.primary, size: 24),
               const SizedBox(width: 10),
               Text(
                 title,
@@ -603,12 +656,12 @@ class _HelpContentBuilder extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF5F5F5),
+              color: AppColors.cardBackground,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
               children: [
-                const Icon(Icons.route, color: Color(0xFF50D2B2), size: 20),
+                const Icon(Icons.route, color: AppColors.primary, size: 20),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -629,50 +682,52 @@ class _HelpContentBuilder extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          ...switches.map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF50D2B2).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
+          ...switches.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.check_circle,
+                      color: AppColors.primary,
+                      size: 16,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.check_circle,
-                    color: Color(0xFF50D2B2),
-                    size: 16,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item['name']!,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black87,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item['name']!,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black87,
+                          ),
                         ),
-                      ),
-                      Text(
-                        item['desc']!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
+                        Text(
+                          item['desc']!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          )),
+          ),
           const SizedBox(height: 16),
         ],
       ),
@@ -698,7 +753,11 @@ class _AutoStartHelpContent extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.help_outline, color: Color(0xFF50D2B2), size: 24),
+              const Icon(
+                Icons.help_outline,
+                color: AppColors.primary,
+                size: 24,
+              ),
               const SizedBox(width: 10),
               Text(
                 '${helpInfo['brandName']} ${ps.PermissionStrings.helpDialogTitle}',
@@ -714,12 +773,12 @@ class _AutoStartHelpContent extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF5F5F5),
+              color: AppColors.cardBackground,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
               children: [
-                const Icon(Icons.route, color: Color(0xFF50D2B2), size: 20),
+                const Icon(Icons.route, color: AppColors.primary, size: 20),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -740,50 +799,52 @@ class _AutoStartHelpContent extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          ...(helpInfo['switches'] as List<Map<String, String>>).map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF50D2B2).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
+          ...(helpInfo['switches'] as List<Map<String, String>>).map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.check_circle,
+                      color: AppColors.primary,
+                      size: 16,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.check_circle,
-                    color: Color(0xFF50D2B2),
-                    size: 16,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item['name']!,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black87,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item['name']!,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black87,
+                          ),
                         ),
-                      ),
-                      Text(
-                        item['desc']!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
+                        Text(
+                          item['desc']!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          )),
+          ),
           const SizedBox(height: 16),
         ],
       ),
@@ -793,13 +854,16 @@ class _AutoStartHelpContent extends StatelessWidget {
 
 /// 权限设置服务（供外部调用）
 class PermissionService {
-  static Future<Map<Permission, PermissionStatus>> requestAllPermissions() async {
+  static Future<Map<Permission, PermissionStatus>>
+  requestAllPermissions() async {
     final results = <Permission, PermissionStatus>{};
 
-    results[Permission.locationAlways] = await Permission.locationAlways.request();
+    results[Permission.locationAlways] = await Permission.locationAlways
+        .request();
 
     if (Platform.isAndroid) {
-      results[Permission.notification] = await Permission.notification.request();
+      results[Permission.notification] = await Permission.notification
+          .request();
     }
 
     results[Permission.storage] = await Permission.storage.request();
@@ -811,8 +875,9 @@ class PermissionService {
     if (!Platform.isAndroid) return false;
 
     try {
-      final result = await const MethodChannel('com.kenny.trace_path/location_service')
-          .invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      final result = await const MethodChannel(
+        'com.kenny.trace_path/location_service',
+      ).invokeMethod<bool>('isIgnoringBatteryOptimizations');
       print('[PermissionService] isIgnoringBatteryOptimizations: $result');
       return result ?? false;
     } catch (e) {
@@ -875,7 +940,8 @@ class PermissionService {
       case 'oneplus':
         // 一加使用电池优化
         pkg = 'com.oneplus.security';
-        cls = 'com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity';
+        cls =
+            'com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity';
         break;
       default:
         pkg = null;
@@ -885,8 +951,9 @@ class PermissionService {
     print('[PermissionService] 电池优化跳转参数 - pkg: $pkg, cls: $cls');
 
     try {
-      final result = await const MethodChannel('com.kenny.trace_path/location_service')
-          .invokeMethod('openBatteryOptimization', {'package': pkg, 'class': cls});
+      final result = await const MethodChannel(
+        'com.kenny.trace_path/location_service',
+      ).invokeMethod('openBatteryOptimization', {'package': pkg, 'class': cls});
       print('[PermissionService] openBatteryOptimization 返回: $result');
       if (result != true) {
         print('[PermissionService] 跳转失败，fallback到应用详情页');
@@ -913,11 +980,13 @@ class PermissionService {
     switch (manufacturer) {
       case 'huawei':
         pkg = 'com.huawei.systemmanager';
-        cls = 'com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity';
+        cls =
+            'com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity';
         break;
       case 'honor':
         pkg = 'com.hihonor.systemmanager';
-        cls = 'com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity';
+        cls =
+            'com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity';
         break;
       case 'xiaomi':
         pkg = 'com.miui.securitycenter';
@@ -929,7 +998,8 @@ class PermissionService {
         break;
       case 'oppo':
         pkg = 'com.coloros.safecenter';
-        cls = 'com.coloros.safecenter.permission.startup.StartupAppListActivity';
+        cls =
+            'com.coloros.safecenter.permission.startup.StartupAppListActivity';
         break;
       case 'samsung':
         pkg = 'com.samsung.android.lool';
@@ -937,7 +1007,8 @@ class PermissionService {
         break;
       case 'oneplus':
         pkg = 'com.oneplus.security';
-        cls = 'com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity';
+        cls =
+            'com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity';
         break;
       default:
         pkg = null;
@@ -948,8 +1019,9 @@ class PermissionService {
 
     try {
       if (pkg != null && cls != null) {
-        final result = await const MethodChannel('com.kenny.trace_path/location_service')
-            .invokeMethod('openAutoStart', {'package': pkg, 'class': cls});
+        final result = await const MethodChannel(
+          'com.kenny.trace_path/location_service',
+        ).invokeMethod('openAutoStart', {'package': pkg, 'class': cls});
         print('[PermissionService] openAutoStart 返回: $result');
         if (result != true) {
           print('[PermissionService] 跳转失败，fallback到应用详情页');
@@ -969,8 +1041,9 @@ class PermissionService {
 
   static Future<String> _getManufacturer() async {
     try {
-      final result = await const MethodChannel('com.kenny.trace_path/location_service')
-          .invokeMethod<String>('getManufacturer');
+      final result = await const MethodChannel(
+        'com.kenny.trace_path/location_service',
+      ).invokeMethod<String>('getManufacturer');
       return (result ?? 'unknown').toLowerCase();
     } catch (e) {
       return 'unknown';

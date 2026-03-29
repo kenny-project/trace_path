@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trace_path/constants/colors.dart';
 import 'location_page.dart';
 import 'track_page.dart';
 import 'guard_page.dart';
@@ -111,7 +112,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Icon(
                       tabs[i]['icon'] as IconData,
-                      color: isActive ? const Color(0xFF00C853) : Colors.grey,
+                      color: isActive ? AppColors.primary : Colors.grey,
                       size: 24,
                     ),
                     const SizedBox(height: 2),
@@ -119,7 +120,7 @@ class _HomePageState extends State<HomePage> {
                       tabs[i]['label'] as String,
                       style: TextStyle(
                         fontSize: 11,
-                        color: isActive ? const Color(0xFF00C853) : Colors.grey,
+                        color: isActive ? AppColors.primary : Colors.grey,
                       ),
                     ),
                   ],

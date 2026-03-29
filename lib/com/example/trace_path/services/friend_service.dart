@@ -30,7 +30,7 @@ class FriendService {
     }
   }
 
-  /// 添加好友
+  /// add friend
   Future<bool> addFriend(Friend friend) async {
     // 检查是否已存在
     if (_friends.any((f) => f.phoneNumber == friend.phoneNumber)) {

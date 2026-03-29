@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trace_path/constants/colors.dart';
 import 'package:trace_path/constants/strings.dart';
 import 'package:trace_path/constants/home_strings.dart' as hs;
 
@@ -11,7 +12,7 @@ class GuardPage extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.shield, size: 64, color: Color(0xFF00C853)),
+          const Icon(Icons.shield, size: 64, color: AppColors.primary),
           const SizedBox(height: 16),
           Text(
             hs.GuardStrings.pageTitle,

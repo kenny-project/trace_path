@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trace_path/constants/colors.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:trace_path/constants/strings.dart';
@@ -102,7 +103,7 @@ class _LocationPageState extends State<LocationPage> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('已添加好友 $phone')));
+      ).showSnackBar(SnackBar(content: Text('${ls.LocationStrings.friendAdded} $phone')));
     } else {
       ScaffoldMessenger.of(
         context,
@@ -243,7 +244,7 @@ class _LocationPageState extends State<LocationPage> {
         ),
         child: Transform.rotate(
           angle: _currentRotation * 3.14159 / 180, // 转换为弧度
-          child: const Icon(Icons.navigation, color: Color(0xFF2D7AF6), size: 28),
+          child: const Icon(Icons.navigation, color: AppColors.primary, size: 28),
         ),
       ),
     );
@@ -294,7 +295,7 @@ class _LocationPageState extends State<LocationPage> {
               )
             : const Icon(
                 Icons.my_location,
-          color: Color(0xFF2D7AF6),
+          color: AppColors.primary,
           size: 24,
         ),
       ),
@@ -323,7 +324,7 @@ class _LocationPageState extends State<LocationPage> {
               alignment: Alignment.center,
               decoration: const BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1),
+                  bottom: BorderSide(color: AppColors.divider, width: 1),
                 ),
               ),
               child: const Icon(Icons.add, size: 22, color: Colors.black87),
@@ -424,7 +425,7 @@ class _LocationPageState extends State<LocationPage> {
               controller: _searchController,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
-                hintText: '查找TA的手机号',
+                hintText: ls.LocationStrings.findTA,
                 hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(vertical: 14),
@@ -435,7 +436,7 @@ class _LocationPageState extends State<LocationPage> {
           ElevatedButton(
             onPressed: _addFriend,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2D7AF6), // 品牌蓝色
+              backgroundColor: AppColors.primary, // 品牌蓝色
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
@@ -443,7 +444,7 @@ class _LocationPageState extends State<LocationPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               elevation: 0,
             ),
-            child: const Text('查找好友', style: TextStyle(fontSize: 13)),
+            child: const Text(ls.LocationStrings.searchFriend, style: TextStyle(fontSize: 13)),
           ),
           const SizedBox(width: 8),
         ],
@@ -497,7 +498,7 @@ class _LocationPageState extends State<LocationPage> {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: friend.phoneNumber == '18511698488'
-                    ? const Color(0xFFFFD700)
+                    ? AppColors.vipGold
                     : Colors.white,
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
@@ -606,7 +607,7 @@ class _LocationPageState extends State<LocationPage> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
+        border: Border(bottom: BorderSide(color: AppColors.divider, width: 1)),
       ),
       child: Row(
         children: [
@@ -616,7 +617,7 @@ class _LocationPageState extends State<LocationPage> {
             height: 50,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF2D7AF6), width: 2),
+              border: Border.all(color: AppColors.primary, width: 2),
             ),
             child: Center(
               child: Text(friend.emoji, style: const TextStyle(fontSize: 28)),
@@ -637,7 +638,7 @@ class _LocationPageState extends State<LocationPage> {
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF333333),
+                          color: AppColors.textPrimary,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -648,7 +649,7 @@ class _LocationPageState extends State<LocationPage> {
                         timeStr,
                         style: const TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF999999),
+                          color: AppColors.textHint,
                         ),
                       ),
                   ],
@@ -669,7 +670,7 @@ class _LocationPageState extends State<LocationPage> {
                           friend.address!,
                           style: const TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF666666),
+                            color: AppColors.textSecondary,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -682,7 +683,7 @@ class _LocationPageState extends State<LocationPage> {
                     '定位: ${friend.lat!.toStringAsFixed(6)}, ${friend.lng!.toStringAsFixed(6)}',
                     style: const TextStyle(
                       fontSize: 11,
-                      color: Color(0xFF999999),
+                      color: AppColors.textHint,
                     ),
                   ),
               ],
@@ -697,8 +698,8 @@ class _LocationPageState extends State<LocationPage> {
               }
             },
             style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF2D7AF6),
-              side: const BorderSide(color: Color(0xFF2D7AF6), width: 1.5),
+              foregroundColor: AppColors.primary,
+              side: const BorderSide(color: AppColors.primary, width: 1.5),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -722,7 +723,7 @@ class _LocationPageState extends State<LocationPage> {
             width: 14,
             height: 14,
             decoration: BoxDecoration(
-              color: const Color(0xFF02C1E0),
+              color: AppColors.amapBlue,
               borderRadius: BorderRadius.circular(3),
             ),
             child: const Icon(Icons.navigation, size: 9, color: Colors.white),

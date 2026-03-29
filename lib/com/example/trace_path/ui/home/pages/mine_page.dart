@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trace_path/constants/colors.dart';
 import '../../../services/location_settings_service.dart';
 import '../../../services/background_location_service.dart';
 import '../../../widgets/location_settings_dialog.dart';
@@ -25,10 +26,10 @@ class _MinePageState extends State<MinePage> {
     });
   }
 
-  static const Color primaryGreen = Color(0xFF50D2B2);
-  static const Color logoutRed = Color(0xFFFF5E3A);
-  static const Color dividerColor = Color(0xFFEEEEEE);
-  static const Color greyText = Color(0xFF999999);
+  static const Color primaryGreen = AppColors.primary;
+  static const Color logoutRed = AppColors.logoutRed;
+  static const Color dividerColor = AppColors.divider2;
+  static const Color greyText = AppColors.textHint;
 
   @override
   Widget build(BuildContext context) {

@@ -15,6 +15,13 @@ class LocationStrings {
   static const String addFriend = '添加好友';
   static const String addFriendHint = '请输入对方手机号码';
   static const String useNow = '去使用';
+  static const String searchFriend = '查找好友';
+  static const String findTA = '查找TA的手机号';
+
+  // ==================== 提示消息 ====================
+  static const String friendAdded = '已添加好友';
+  static const String friendExists = '好友已存在';
+  static const String pleaseEnterPhone = '请输入手机号';
 
   // ==================== 标题 ====================
   static const String myFriends = '我的好友';

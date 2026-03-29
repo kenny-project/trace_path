@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trace_path/constants/colors.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../services/track_service.dart';
@@ -53,7 +54,10 @@ class _TrackMapPageState extends State<TrackMapPage> {
         sumLat += point.latitude;
         sumLng += point.longitude;
       }
-      _center = LatLng(sumLat / _polylinePoints.length, sumLng / _polylinePoints.length);
+      _center = LatLng(
+        sumLat / _polylinePoints.length,
+        sumLng / _polylinePoints.length,
+      );
     } else {
       _center = const LatLng(39.908823, 116.397470);
     }
@@ -101,7 +105,11 @@ class _TrackMapPageState extends State<TrackMapPage> {
             const SizedBox(width: 8),
             Text(
               '${widget.name} ${widget.year}-${widget.month.toString().padLeft(2, '0')}-${widget.day.toString().padLeft(2, '0')}',
-              style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 14),
+              style: const TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
           ],
         ),
@@ -139,7 +147,7 @@ class _TrackMapPageState extends State<TrackMapPage> {
                   polylines: [
                     Polyline(
                       points: _polylinePoints,
-                      color: const Color(0xFF2D7AF6),
+                      color: AppColors.primary,
                       strokeWidth: 4,
                     ),
                   ],
@@ -148,23 +156,11 @@ class _TrackMapPageState extends State<TrackMapPage> {
             ],
           ),
           // 指南针（右上角）
-          Positioned(
-            right: 16,
-            top: 16,
-            child: _buildCompass(),
-          ),
+          Positioned(right: 16, top: 16, child: _buildCompass()),
           // 缩放按钮（左下角）
-          Positioned(
-            left: 16,
-            bottom: 100,
-            child: _buildZoomControls(),
-          ),
+          Positioned(left: 16, bottom: 100, child: _buildZoomControls()),
           // 比例尺（右下角）
-          Positioned(
-            right: 60,
-            bottom: 16,
-            child: _buildScaleBar(),
-          ),
+          Positioned(right: 60, bottom: 16, child: _buildScaleBar()),
           // 底部信息栏
           Positioned(
             left: 16,
@@ -187,13 +183,14 @@ class _TrackMapPageState extends State<TrackMapPage> {
         decoration: BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 6,
+            ),
+          ],
         ),
-        child: const Icon(
-          Icons.navigation,
-          color: Color(0xFF2D7AF6),
-          size: 28,
-        ),
+        child: const Icon(Icons.navigation, color: AppColors.primary, size: 28),
       ),
     );
   }
@@ -204,7 +201,9 @@ class _TrackMapPageState extends State<TrackMapPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -218,7 +217,7 @@ class _TrackMapPageState extends State<TrackMapPage> {
               alignment: Alignment.center,
               decoration: const BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1),
+                  bottom: BorderSide(color: AppColors.divider, width: 1),
                 ),
               ),
               child: const Icon(Icons.add, size: 22, color: Colors.black87),
@@ -264,14 +263,20 @@ class _TrackMapPageState extends State<TrackMapPage> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(4),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             distance,
-            style: const TextStyle(fontSize: 11, color: Colors.black87, fontWeight: FontWeight.w500),
+            style: const TextStyle(
+              fontSize: 11,
+              color: Colors.black87,
+              fontWeight: FontWeight.w500,
+            ),
           ),
           const SizedBox(height: 2),
           Container(
@@ -283,11 +288,7 @@ class _TrackMapPageState extends State<TrackMapPage> {
             ),
           ),
           const SizedBox(height: 2),
-          Container(
-            width: 40,
-            height: 1,
-            color: Colors.white,
-          ),
+          Container(width: 40, height: 1, color: Colors.white),
         ],
       ),
     );
@@ -304,7 +305,11 @@ class _TrackMapPageState extends State<TrackMapPage> {
       final prev = widget.points[i - 1];
       final curr = widget.points[i];
       const distance = Distance();
-      totalDistance += distance.as(LengthUnit.Meter, prev.toLatLng(), curr.toLatLng());
+      totalDistance += distance.as(
+        LengthUnit.Meter,
+        prev.toLatLng(),
+        curr.toLatLng(),
+      );
     }
 
     final distanceStr = totalDistance > 1000
@@ -340,7 +345,10 @@ class _TrackMapPageState extends State<TrackMapPage> {
       children: [
         Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
       ],
     );
   }
@@ -357,7 +365,7 @@ class _TrackMapPageState extends State<TrackMapPage> {
         height: 30,
         child: Container(
           decoration: const BoxDecoration(
-            color: Color(0xFF4CAF50),
+            color: AppColors.primary,
             shape: BoxShape.circle,
           ),
           child: const Icon(Icons.play_arrow, color: Colors.white, size: 18),
@@ -373,7 +381,7 @@ class _TrackMapPageState extends State<TrackMapPage> {
           height: 30,
           child: Container(
             decoration: const BoxDecoration(
-              color: Color(0xFFFF5722),
+              color: AppColors.warning,
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.stop, color: Colors.white, size: 18),

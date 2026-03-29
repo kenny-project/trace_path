@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trace_path/constants/colors.dart';
 import '../../../services/track_service.dart';
 import '../../../services/friend_service.dart';
 import 'track_map_page.dart';
@@ -182,7 +183,7 @@ class _TrackPageState extends State<TrackPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2D7AF6), width: 2),
+        border: Border.all(color: AppColors.primary, width: 2),
       ),
       child: ListTile(
         onTap: () {
@@ -196,7 +197,7 @@ class _TrackPageState extends State<TrackPage> {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: const Color(0xFF2D7AF6).withValues(alpha: 0.1),
+            color: AppColors.primary.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Center(child: Text(emoji, style: const TextStyle(fontSize: 24))),
@@ -211,7 +212,7 @@ class _TrackPageState extends State<TrackPage> {
         ),
         trailing: Icon(
           isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-          color: const Color(0xFF2D7AF6),
+          color: AppColors.primary,
         ),
       ),
     );
@@ -236,7 +237,7 @@ class _TrackPageState extends State<TrackPage> {
           });
         },
         dense: true,
-        leading: const Icon(Icons.calendar_today, size: 20, color: Color(0xFF2D7AF6)),
+        leading: const Icon(Icons.calendar_today, size: 20, color: AppColors.primary),
         title: Text(
           '$year 年',
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
@@ -269,7 +270,7 @@ class _TrackPageState extends State<TrackPage> {
           });
         },
         dense: true,
-        leading: const Icon(Icons.event, size: 18, color: Color(0xFF2D7AF6)),
+        leading: const Icon(Icons.event, size: 18, color: AppColors.primary),
         title: Text(
           '$monthName',
           style: const TextStyle(fontSize: 13),
@@ -342,14 +343,14 @@ class _TrackPageState extends State<TrackPage> {
           children: [
             const Padding(
               padding: EdgeInsets.only(left: 16),
-              child: Icon(Icons.access_time, size: 16, color: Color(0xFF2D7AF6)),
+              child: Icon(Icons.access_time, size: 16, color: AppColors.primary),
             ),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Text(
                   '$dayName ($dateStr)',
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF2D7AF6)),
+                  style: const TextStyle(fontSize: 13, color: AppColors.primary),
                 ),
               ),
             ),

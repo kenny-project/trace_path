@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:trace_path/constants/location_strings.dart' as ls;
+import 'package:trace_path/constants/colors.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -90,11 +92,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
 
                   // 好友示例气泡
-                  Positioned(
-                    left: 12,
-                    top: 12,
-                    child: _buildFriendBubble(),
-                  ),
+                  Positioned(left: 12, top: 12, child: _buildFriendBubble()),
 
                   // 地图右下角控制按钮
                   Positioned(
@@ -102,7 +100,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     bottom: 80,
                     child: Column(
                       children: [
-                        _buildMapButton(Icons.add, '添加好友', () {}),
+                        _buildMapButton(Icons.add, ls.LocationStrings.addFriend, () {}),
                         const SizedBox(height: 8),
                         _buildMapButton(Icons.my_location, '', () {
                           _mapController.move(
@@ -170,14 +168,14 @@ class _MyHomePageState extends State<MyHomePage> {
             child: ElevatedButton(
               onPressed: () {},
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00C853),
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
               ),
-              child: const Text('添加好友', style: TextStyle(fontSize: 13)),
+              child: const Text(ls.LocationStrings.addFriend, style: TextStyle(fontSize: 13)),
             ),
           ),
         ],
@@ -232,14 +230,14 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       );
     }
-    // 添加好友按钮 - 绿色圆形
+    // add friend button - green circle
     return GestureDetector(
       onTap: onPressed,
       child: Container(
         width: 44,
         height: 44,
         decoration: const BoxDecoration(
-          color: Color(0xFF00C853),
+          color: AppColors.primary,
           shape: BoxShape.circle,
         ),
         child: Column(
@@ -293,7 +291,7 @@ class _MyHomePageState extends State<MyHomePage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFD700),
+                color: AppColors.vipGold,
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
                   BoxShadow(
@@ -317,7 +315,7 @@ class _MyHomePageState extends State<MyHomePage> {
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1A1A66), Color(0xFF3D2B8A)],
+          colors: [AppColors.deepBlue1, AppColors.deepBlue2],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
@@ -347,7 +345,10 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 Text(
                   '您有一个未支付订单的专属优惠券-¥240',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontSize: 12,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
@@ -356,7 +357,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     Text(
                       _formatCountdown(_countdownSeconds),
                       style: const TextStyle(
-                        color: Color(0xFFFFD700),
+                        color: AppColors.vipGold,
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
                       ),
@@ -364,7 +365,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     const SizedBox(width: 6),
                     const Text(
                       '限时特惠',
-                      style: TextStyle(color: Color(0xFFFF6B6B), fontSize: 10),
+                      style: TextStyle(color: AppColors.lightRed, fontSize: 10),
                     ),
                   ],
                 ),
@@ -413,7 +414,10 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
           ),
-          ...List.generate(_friends.length, (i) => _buildFriendItem(_friends[i])),
+          ...List.generate(
+            _friends.length,
+            (i) => _buildFriendItem(_friends[i]),
+          ),
           const SizedBox(height: 4),
         ],
       ),
@@ -440,7 +444,10 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 Text(
                   friend['name'],
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Row(
@@ -461,7 +468,10 @@ class _MyHomePageState extends State<MyHomePage> {
                     Expanded(
                       child: Text(
                         friend['address'],
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -474,7 +484,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ElevatedButton(
             onPressed: () {},
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00C853),
+              backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -499,7 +509,7 @@ class _MyHomePageState extends State<MyHomePage> {
             width: 16,
             height: 16,
             decoration: BoxDecoration(
-              color: const Color(0xFF02C1E0),
+              color: AppColors.amapBlue,
               borderRadius: BorderRadius.circular(3),
             ),
             child: const Icon(Icons.navigation, size: 10, color: Colors.white),
@@ -552,7 +562,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   children: [
                     Icon(
                       tabs[i]['icon'] as IconData,
-                      color: isActive ? const Color(0xFF00C853) : Colors.grey,
+                      color: isActive ? AppColors.primary : Colors.grey,
                       size: 24,
                     ),
                     const SizedBox(height: 2),
@@ -560,7 +570,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       tabs[i]['label'] as String,
                       style: TextStyle(
                         fontSize: 11,
-                        color: isActive ? const Color(0xFF00C853) : Colors.grey,
+                        color: isActive ? AppColors.primary : Colors.grey,
                       ),
                     ),
                   ],
