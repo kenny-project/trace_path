@@ -187,17 +187,27 @@ public class LocationForegroundService extends Service {
         double accuracy = location.getAccuracy();
         long time = location.getTime();
 
-        // 智能去重：距离<10米且时间<60秒不保存
+        // 智能去重规则：
+        // 1. 距离<10米且时间<60秒 → 不保存
+        // 2. 时间>=1小时 → 即使距离近也要保存
+        // 3. 其他情况 → 保存
         if (lastLat != 0 && lastLng != 0) {
             float[] results = new float[1];
             Location.distanceBetween(lastLat, lastLng, lat, lng, results);
             double distance = results[0];
-            if (distance < MIN_DISTANCE && (time - lastTime) < 60000) {
-                // 跳过
+            long timeDiff = time - lastTime;
+            
+            // 距离<10米且时间<60秒 → 跳过
+            // 时间>=1小时(3600000ms) → 强制保存
+            if (distance < MIN_DISTANCE && timeDiff < 60000) {
+                // 跳过，不保存
+                android.util.Log.i("LocationService", "跳过: 距离=" + distance + "米, 时间差=" + timeDiff + "ms");
             } else {
+                // 保存（可能是距离远或时间够了1小时）
                 saveToCsv(lat, lng, altitude, speed, accuracy, time);
             }
         } else {
+            // 首次定位，保存
             saveToCsv(lat, lng, altitude, speed, accuracy, time);
         }
 
@@ -210,21 +220,43 @@ public class LocationForegroundService extends Service {
 
     private void saveToCsv(double lat, double lng, double altitude, double speed, double accuracy, long time) {
         try {
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
-            String dateStr = dateFormat.format(new Date(time));
-            File dir = new File(getFilesDir(), "location_tracks");
-            if (!dir.exists()) dir.mkdirs();
-            File file = new File(dir, dateStr + ".csv");
+            // 使用新的目录结构: {phoneNumber}/{year}/{month}/{day}.csv
+            // 默认使用18511698488，后续可以通过方法设置
+            String phoneNumber = getPhoneNumber();
+            SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy", Locale.US);
+            SimpleDateFormat monthFormat = new SimpleDateFormat("MM", Locale.US);
+            SimpleDateFormat dayFormat = new SimpleDateFormat("dd", Locale.US);
+            SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US);
 
+            String year = yearFormat.format(new Date(time));
+            String month = monthFormat.format(new Date(time));
+            String day = dayFormat.format(new Date(time));
+            String timestamp = tsFormat.format(new Date(time));
+
+            File dir = new File(getFilesDir(), "location_tracks/" + phoneNumber + "/" + year + "/" + month);
+            if (!dir.exists()) dir.mkdirs();
+            File file = new File(dir, day + ".csv");
+
+            // 检查是否需要写入表头
+            boolean needsHeader = !file.exists() || file.length() == 0;
+            
             FileWriter fw = new FileWriter(file, true);
             BufferedWriter bw = new BufferedWriter(fw);
-            SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US);
-            String timestamp = tsFormat.format(new Date(time));
+            
+            if (needsHeader) {
+                bw.write("timestamp,latitude,longitude,altitude,speed,accuracy\n");
+            }
             bw.write(String.format(Locale.US, "%s,%.6f,%.6f,%.2f,%.2f,%.1f\n",
                 timestamp, lat, lng, altitude, speed, accuracy));
             bw.close();
         } catch (IOException e) {
             android.util.Log.e("LocationService", "CSV写失败: " + e.getMessage());
         }
+    }
+
+    // 获取当前使用的手机号（后续可以从SharedPreferences或方法获取）
+    private String getPhoneNumber() {
+        // 默认使用主用户手机号
+        return "18511698488";
     }
 }

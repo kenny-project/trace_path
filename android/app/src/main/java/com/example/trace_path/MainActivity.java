@@ -87,6 +87,16 @@ public class MainActivity extends FlutterActivity {
                     return;
                 }
 
+                if (call.method.equals("getFilesDir")) {
+                    try {
+                        String filesPath = getFilesDir().getAbsolutePath();
+                        result.success(filesPath);
+                    } catch (Exception e) {
+                        result.success(null);
+                    }
+                    return;
+                }
+
                 Intent intent = new Intent(MainActivity.this, LocationForegroundService.class);
 
                 if (call.method.equals("start")) {
