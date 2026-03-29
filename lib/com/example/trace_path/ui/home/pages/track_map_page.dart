@@ -34,6 +34,9 @@ class _TrackMapPageState extends State<TrackMapPage> {
   late List<LatLng> _polylinePoints;
   late LatLng _center;
 
+  // 地图状态
+  double _currentZoom = 14;
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +57,31 @@ class _TrackMapPageState extends State<TrackMapPage> {
     } else {
       _center = const LatLng(39.908823, 116.397470);
     }
+  }
+
+  /// 放大
+  void _zoomIn() {
+    if (_currentZoom < 18) {
+      _currentZoom += 1;
+      _mapController.move(_mapController.camera.center, _currentZoom);
+      setState(() {});
+    }
+  }
+
+  /// 缩小
+  void _zoomOut() {
+    if (_currentZoom > 3) {
+      _currentZoom -= 1;
+      _mapController.move(_mapController.camera.center, _currentZoom);
+      setState(() {});
+    }
+  }
+
+  /// 复位地图（归位到正北方向，当前zoom）
+  void _resetMapView() {
+    _mapController.move(_center, _currentZoom);
+    _mapController.rotate(0);
+    setState(() {});
   }
 
   @override
@@ -86,6 +114,17 @@ class _TrackMapPageState extends State<TrackMapPage> {
             options: MapOptions(
               initialCenter: _center,
               initialZoom: 14,
+              minZoom: 3,
+              maxZoom: 18, // 最大18级，防止无底图
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.all,
+              ),
+              onPositionChanged: (position, hasGesture) {
+                if (hasGesture && position.zoom != null) {
+                  _currentZoom = position.zoom!;
+                  setState(() {});
+                }
+              },
             ),
             children: [
               TileLayer(
@@ -93,6 +132,7 @@ class _TrackMapPageState extends State<TrackMapPage> {
                     'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
                 subdomains: const ['1', '2', '3', '4'],
                 userAgentPackageName: 'com.example.trace_path',
+                maxZoom: 18, // 高德底图最大18级
               ),
               if (_polylinePoints.isNotEmpty)
                 PolylineLayer(
@@ -107,11 +147,146 @@ class _TrackMapPageState extends State<TrackMapPage> {
               MarkerLayer(markers: _buildMarkers()),
             ],
           ),
+          // 指南针（右上角）
+          Positioned(
+            right: 16,
+            top: 16,
+            child: _buildCompass(),
+          ),
+          // 缩放按钮（左下角）
+          Positioned(
+            left: 16,
+            bottom: 100,
+            child: _buildZoomControls(),
+          ),
+          // 比例尺（右下角）
+          Positioned(
+            right: 60,
+            bottom: 16,
+            child: _buildScaleBar(),
+          ),
+          // 底部信息栏
           Positioned(
             left: 16,
             right: 16,
             bottom: 16,
             child: _buildBottomInfo(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 指南针组件
+  Widget _buildCompass() {
+    return GestureDetector(
+      onTap: _resetMapView,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+        ),
+        child: const Icon(
+          Icons.navigation,
+          color: Color(0xFF2D7AF6),
+          size: 28,
+        ),
+      ),
+    );
+  }
+
+  /// 缩放控制按钮
+  Widget _buildZoomControls() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 放大按钮
+          GestureDetector(
+            onTap: _zoomIn,
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1),
+                ),
+              ),
+              child: const Icon(Icons.add, size: 22, color: Colors.black87),
+            ),
+          ),
+          // 缩小按钮
+          GestureDetector(
+            onTap: _zoomOut,
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              child: const Icon(Icons.remove, size: 22, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 比例尺
+  Widget _buildScaleBar() {
+    // 根据当前zoom计算比例尺
+    String distance;
+    if (_currentZoom >= 16) {
+      distance = '50m';
+    } else if (_currentZoom >= 14) {
+      distance = '200m';
+    } else if (_currentZoom >= 12) {
+      distance = '500m';
+    } else if (_currentZoom >= 10) {
+      distance = '1km';
+    } else if (_currentZoom >= 8) {
+      distance = '2km';
+    } else if (_currentZoom >= 6) {
+      distance = '5km';
+    } else {
+      distance = '10km';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            distance,
+            style: const TextStyle(fontSize: 11, color: Colors.black87, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 2),
+          Container(
+            width: 40,
+            height: 3,
+            decoration: BoxDecoration(
+              color: Colors.black87,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Container(
+            width: 40,
+            height: 1,
+            color: Colors.white,
           ),
         ],
       ),

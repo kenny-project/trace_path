@@ -23,6 +23,7 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
   late int _intervalSeconds;
   late bool _powerSaving;
   bool _isLoading = false;
+  bool _isServiceRunning = false; // 实际服务运行状态
 
   @override
   void initState() {
@@ -30,6 +31,20 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
     _enabled = widget.settingsService.settings.enabled;
     _intervalSeconds = widget.settingsService.settings.intervalSeconds;
     _powerSaving = widget.settingsService.settings.powerSaving;
+    _checkServiceRunning();
+  }
+
+  Future<void> _checkServiceRunning() async {
+    final running = await widget.locationService.checkRunning();
+    if (mounted) {
+      setState(() {
+        _isServiceRunning = running;
+        // 如果服务正在运行，开关状态应该反映服务运行状态
+        if (running) {
+          _enabled = true;
+        }
+      });
+    }
   }
 
   @override
@@ -134,6 +149,11 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
                   subtitle,
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
+              if (_isServiceRunning && value)
+                Text(
+                  '服务运行中',
+                  style: TextStyle(fontSize: 11, color: Colors.green[600]),
+                ),
             ],
           ),
         ),
@@ -183,6 +203,7 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
     setState(() => _isLoading = true);
 
     try {
+      // 先更新设置
       await widget.settingsService.update(
         enabled: _enabled,
         intervalSeconds: _intervalSeconds,
@@ -190,17 +211,31 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
       );
 
       if (_enabled) {
-        final ok = await widget.locationService.start();
-        if (!ok && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(ws.WidgetStrings.locationPermissionDenied),
-              backgroundColor: Colors.orange,
-            ),
+        if (_isServiceRunning) {
+          // 服务已在运行，只更新配置参数
+          await widget.locationService.updateSettings(
+            intervalSeconds: _intervalSeconds,
+            powerSaving: _powerSaving,
           );
+        } else {
+          // 服务未运行，启动服务
+          final ok = await widget.locationService.start();
+          if (!ok && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(ws.WidgetStrings.locationPermissionDenied),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            // 启动失败，关闭开关
+            setState(() => _enabled = false);
+          }
         }
       } else {
-        await widget.locationService.stop();
+        if (_isServiceRunning) {
+          // 服务正在运行，停止服务
+          await widget.locationService.stop();
+        }
       }
 
       if (mounted) Navigator.pop(context, true);

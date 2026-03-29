@@ -30,6 +30,9 @@ class _LocationPageState extends State<LocationPage> {
   bool _isFriendsListExpanded = true; // 好友列表默认展开
   static const int _maxVisibleFriends = 1; // 折叠时显示1个好友
 
+  // 地图状态
+  double _currentZoom = 14;
+
   @override
   void initState() {
     super.initState();
@@ -104,6 +107,38 @@ class _LocationPageState extends State<LocationPage> {
     }
   }
 
+  void _onMapTap(TapPosition tapPosition, LatLng point) {
+    // 收起键盘
+    FocusScope.of(context).unfocus();
+  }
+
+  /// 放大
+  void _zoomIn() {
+    if (_currentZoom < 18) {
+      _currentZoom += 1;
+      _mapController.move(_mapController.camera.center, _currentZoom);
+      setState(() {});
+    }
+  }
+
+  /// 缩小
+  void _zoomOut() {
+    if (_currentZoom > 3) {
+      _currentZoom -= 1;
+      _mapController.move(_mapController.camera.center, _currentZoom);
+      setState(() {});
+    }
+  }
+
+  /// 复位地图（归位到正北方向，zoom 14）
+  void _resetMapView() {
+    _mapController.move(LatLng(_myLat, _myLng), 14);
+    _mapController.rotate(0);
+    setState(() {
+      _currentZoom = 14;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -117,6 +152,18 @@ class _LocationPageState extends State<LocationPage> {
                 options: MapOptions(
                   initialCenter: LatLng(_myLat, _myLng),
                   initialZoom: 14,
+                  minZoom: 3,
+                  maxZoom: 18, // 最大18级，防止无底图
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.all,
+                  ),
+                  onTap: _onMapTap,
+                  onPositionChanged: (position, hasGesture) {
+                    if (hasGesture && position.zoom != null) {
+                      _currentZoom = position.zoom!;
+                      setState(() {});
+                    }
+                  },
                 ),
                 children: [
                   TileLayer(
@@ -124,27 +171,38 @@ class _LocationPageState extends State<LocationPage> {
                         'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
                     subdomains: const ['1', '2', '3', '4'],
                     userAgentPackageName: 'com.example.trace_path',
+                    maxZoom: 18, // 高德底图最大18级
                   ),
                   MarkerLayer(markers: _buildMarkers()),
                 ],
+              ),
+              // 指南针（右上角）
+              Positioned(
+                right: 16,
+                top: 50,
+                child: _buildCompass(),
+              ),
+              // 缩放按钮（左下角）
+              Positioned(
+                left: 16,
+                bottom: _isFriendsListExpanded ? 250 : 100,
+                child: _buildZoomControls(),
+              ),
+              // 比例尺（右下角）
+              Positioned(
+                right: 60,
+                bottom: 16,
+                child: _buildScaleBar(),
               ),
               // 搜索栏（浮动在地图上）
               if (_showSearchBar)
                 Positioned(
                   left: 16,
-                  right: 16,
+                  right: 80,
                   top: 50,
                   child: _buildSearchBar(),
                 ),
               Positioned(left: 12, top: 12, child: _buildFriendBubble()),
-              // 定位按钮 - 放在好友列表上方50dip
-              Positioned(
-                right: 16,
-                bottom: 50,
-                child: _buildMapButton(Icons.my_location, '', () {
-                  _mapController.move(LatLng(_myLat, _myLng), 14);
-                }),
-              ),
               // 高德版权信息（透明背景，浮在地图上）
               Positioned(
                 left: 0,
@@ -158,6 +216,122 @@ class _LocationPageState extends State<LocationPage> {
         // 好友列表（可展开/折叠）
         _buildFriendsListSection(),
       ],
+    );
+  }
+
+  /// 指南针组件
+  Widget _buildCompass() {
+    return GestureDetector(
+      onTap: _resetMapView,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+        ),
+        child: const Icon(
+          Icons.navigation,
+          color: Color(0xFF2D7AF6),
+          size: 28,
+        ),
+      ),
+    );
+  }
+
+  /// 缩放控制按钮
+  Widget _buildZoomControls() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 放大按钮
+          GestureDetector(
+            onTap: _zoomIn,
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1),
+                ),
+              ),
+              child: const Icon(Icons.add, size: 22, color: Colors.black87),
+            ),
+          ),
+          // 缩小按钮
+          GestureDetector(
+            onTap: _zoomOut,
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              child: const Icon(Icons.remove, size: 22, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 比例尺
+  Widget _buildScaleBar() {
+    // 根据当前zoom计算比例尺
+    String distance;
+    if (_currentZoom >= 16) {
+      distance = '50m';
+    } else if (_currentZoom >= 14) {
+      distance = '200m';
+    } else if (_currentZoom >= 12) {
+      distance = '500m';
+    } else if (_currentZoom >= 10) {
+      distance = '1km';
+    } else if (_currentZoom >= 8) {
+      distance = '2km';
+    } else if (_currentZoom >= 6) {
+      distance = '5km';
+    } else {
+      distance = '10km';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            distance,
+            style: const TextStyle(fontSize: 11, color: Colors.black87, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 2),
+          Container(
+            width: 40,
+            height: 3,
+            decoration: BoxDecoration(
+              color: Colors.black87,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Container(
+            width: 40,
+            height: 1,
+            color: Colors.white,
+          ),
+        ],
+      ),
     );
   }
 
@@ -232,42 +406,6 @@ class _LocationPageState extends State<LocationPage> {
           const SizedBox(width: 4),
           Text(friends.first.name, style: const TextStyle(fontSize: 12, color: Colors.black87)),
         ],
-      ),
-    );
-  }
-
-  Widget _buildMapButton(IconData icon, String label, VoidCallback onPressed) {
-    if (label.isEmpty) {
-      return GestureDetector(
-        onTap: onPressed,
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
-          ),
-          child: Icon(icon, color: Colors.black87, size: 22),
-        ),
-      );
-    }
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: const BoxDecoration(
-          color: Color(0xFF00C853),
-          shape: BoxShape.circle,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: Colors.white, size: 18),
-            Text(label, style: const TextStyle(color: Colors.white, fontSize: 7)),
-          ],
-        ),
       ),
     );
   }
