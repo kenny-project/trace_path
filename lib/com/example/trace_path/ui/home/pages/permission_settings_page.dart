@@ -808,7 +808,17 @@ class PermissionService {
   }
 
   static Future<bool> isIgnoringBatteryOptimizations() async {
-    return false;
+    if (!Platform.isAndroid) return false;
+
+    try {
+      final result = await const MethodChannel('com.example.trace_path/location_service')
+          .invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      print('[PermissionService] isIgnoringBatteryOptimizations: $result');
+      return result ?? false;
+    } catch (e) {
+      print('[PermissionService] isIgnoringBatteryOptimizations 异常: $e');
+      return false;
+    }
   }
 
   static Future<bool> requestIgnoreBatteryOptimization() async {

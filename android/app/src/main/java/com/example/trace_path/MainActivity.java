@@ -2,6 +2,7 @@ package com.example.trace_path;
 
 import android.content.Intent;
 import android.net.Uri;
+import android.os.PowerManager;
 import io.flutter.embedding.android.FlutterActivity;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.MethodChannel;
@@ -70,6 +71,17 @@ public class MainActivity extends FlutterActivity {
                         i.setData(Uri.parse("package:" + getPackageName()));
                         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(i);
+                        result.success(false);
+                    }
+                    return;
+                }
+
+                if (call.method.equals("isIgnoringBatteryOptimizations")) {
+                    try {
+                        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+                        boolean isIgnoring = pm.isIgnoringBatteryOptimizations(getPackageName());
+                        result.success(isIgnoring);
+                    } catch (Exception e) {
                         result.success(false);
                     }
                     return;

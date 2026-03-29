@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as Math;
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -92,6 +93,87 @@ class BackgroundLocationService {
       print('[BackgroundLocationService] 权限检查异常: $e');
       return false;
     }
+  }
+
+  /// 获取当前位置（WGS84转GCJ-02用于高德地图显示）
+  Future<Position?> getCurrentPosition() async {
+    try {
+      final hasPermission = await _checkPermission();
+      if (!hasPermission) {
+        print('[BackgroundLocationService] getCurrentPosition: 权限检查失败');
+        return null;
+      }
+
+      print('[BackgroundLocationService] getCurrentPosition: 开始获取位置');
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      print('[BackgroundLocationService] getCurrentPosition: 原始 WGS84 lat=${position.latitude}, lng=${position.longitude}');
+
+      // WGS84 转 GCJ-02（中国坐标系）
+      final gcj02 = wgs84ToGcj02(position.latitude, position.longitude);
+      print('[BackgroundLocationService] getCurrentPosition: 转换 GCJ-02 lat=${gcj02[0]}, lng=${gcj02[1]}');
+
+      // 返回转换后的坐标（通过创建新的Position）
+      return Position(
+        latitude: gcj02[0],
+        longitude: gcj02[1],
+        timestamp: position.timestamp,
+        accuracy: position.accuracy,
+        altitude: position.altitude,
+        altitudeAccuracy: position.altitudeAccuracy,
+        heading: position.heading,
+        headingAccuracy: position.headingAccuracy,
+        speed: position.speed,
+        speedAccuracy: position.speedAccuracy,
+      );
+    } catch (e) {
+      print('[BackgroundLocationService] getCurrentPosition 异常: $e');
+      return null;
+    }
+  }
+
+  /// WGS84 坐标系转 GCJ-02 坐标系（用于中国境内高德/腾讯地图）
+  List<double> wgs84ToGcj02(double lat, double lon) {
+    const double pi = 3.1415926535897932384626;
+    const double a = 6378245.0; // 地球长半轴
+    const double ee = 0.00669342162296594323; // 扁率
+
+    double dLat = _transformLat(lon - 105.0, lat - 35.0);
+    double dLon = _transformLon(lon - 105.0, lat - 35.0);
+
+    double radLat = lat / 180.0 * pi;
+    double sinLat = Math.sin(radLat);
+    double cosLat = Math.cos(radLat);
+    double magic = 1 - ee * sinLat * sinLat;
+    double sqrtMagic = Math.sqrt(magic);
+
+    dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * pi);
+    dLon = (dLon * 180.0) / (a / sqrtMagic * cosLat * pi);
+
+    return [lat + dLat, lon + dLon];
+  }
+
+  double _transformLat(double x, double y) {
+    const double pi = 3.1415926535897932384626;
+    double ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y;
+    double sqrtX = x >= 0 ? x : -x;
+    ret += 0.2 * Math.sqrt(sqrtX);
+    ret += (20.0 * Math.sin(6.0 * x * pi) + 20.0 * Math.sin(2.0 * x * pi)) * 2.0 / 3.0;
+    ret += (20.0 * Math.sin(y * pi) + 40.0 * Math.sin(y / 3.0 * pi)) * 2.0 / 3.0;
+    ret += (160.0 * Math.sin(y / 12.0 * pi) + 320.0 * Math.sin(y * pi / 30.0)) * 2.0 / 3.0;
+    return ret;
+  }
+
+  double _transformLon(double x, double y) {
+    const double pi = 3.1415926535897932384626;
+    double ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y;
+    double sqrtX = x >= 0 ? x : -x;
+    ret += 0.1 * Math.sqrt(sqrtX);
+    ret += (20.0 * Math.sin(6.0 * x * pi) + 20.0 * Math.sin(2.0 * x * pi)) * 2.0 / 3.0;
+    ret += (20.0 * Math.sin(x * pi) + 40.0 * Math.sin(x / 3.0 * pi)) * 2.0 / 3.0;
+    ret += (150.0 * Math.sin(x / 12.0 * pi) + 300.0 * Math.sin(x / 30.0 * pi)) * 2.0 / 3.0;
+    return ret;
   }
 
   /// 更新设置（热更新）

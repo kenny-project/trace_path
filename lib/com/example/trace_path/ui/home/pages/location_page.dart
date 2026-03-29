@@ -3,6 +3,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:trace_path/constants/strings.dart';
 import 'package:trace_path/constants/location_strings.dart' as ls;
+import '../../../services/background_location_service.dart';
+import '../../../services/friend_service.dart';
+import '../../../models/friend_model.dart';
 
 class LocationPage extends StatefulWidget {
   const LocationPage({super.key});
@@ -14,57 +17,105 @@ class LocationPage extends StatefulWidget {
 class _LocationPageState extends State<LocationPage> {
   final TextEditingController _searchController = TextEditingController();
   final MapController _mapController = MapController();
+  final BackgroundLocationService _locationService = BackgroundLocationService();
+  final FriendService _friendService = FriendService();
 
-  final List<Map<String, dynamic>> _friends = [
-    {
-      'name': ls.LocationStrings.selfName,
-      'avatar': ls.LocationStrings.selfEmoji,
-      'time': '17:21',
-      'date': '2026-03-28',
-      'address': '北京市朝阳区常营中路179号靠近富力阳光美园',
-      'lat': 39.956,
-      'lng': 116.618,
-    },
-  ];
+  // 当前位置
+  double _myLat = 39.908823;
+  double _myLng = 116.397470;
+  bool _isLoadingLocation = true;
 
-  int _countdownSeconds = 13 * 3600 + 53 * 60 + 55;
+  // UI状态
+  bool _showSearchBar = true; // 搜索栏默认显示
+  bool _isFriendsListExpanded = true; // 好友列表默认展开
+  static const int _maxVisibleFriends = 1; // 折叠时显示1个好友
 
   @override
   void initState() {
     super.initState();
-    _startCountdown();
+    _loadCurrentLocation();
+    _friendService.init();
   }
 
-  void _startCountdown() {
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return false;
+  Future<void> _loadCurrentLocation() async {
+    final position = await _locationService.getCurrentPosition();
+    if (position != null && mounted) {
       setState(() {
-        if (_countdownSeconds > 0) _countdownSeconds--;
+        _myLat = position.latitude;
+        _myLng = position.longitude;
+        _isLoadingLocation = false;
       });
-      return _countdownSeconds > 0;
+      _mapController.move(LatLng(_myLat, _myLng), 14);
+
+      // 更新我的位置到好友服务
+      await _friendService.updateFriendLocation('18511698488', _myLat, _myLng);
+    } else {
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation = false;
+        });
+      }
+    }
+  }
+
+  void _toggleSearchBar() {
+    setState(() {
+      _showSearchBar = !_showSearchBar;
     });
   }
 
-  String _formatCountdown(int seconds) {
-    final h = seconds ~/ 3600;
-    final m = (seconds % 3600) ~/ 60;
-    final s = seconds % 60;
-    return '${h.toString().padLeft(2, '0')} : ${m.toString().padLeft(2, '0')} : ${s.toString().padLeft(2, '0')}';
+  void _toggleFriendsList() {
+    setState(() {
+      _isFriendsListExpanded = !_isFriendsListExpanded;
+    });
+  }
+
+  Future<void> _addFriend() async {
+    final phone = _searchController.text.trim();
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入手机号')),
+      );
+      return;
+    }
+
+    final friend = Friend(
+      phoneNumber: phone,
+      name: '好友$phone',
+      emoji: '👤',
+      lat: _myLat,
+      lng: _myLng,
+      lastUpdateTime: DateTime.now(),
+    );
+
+    final success = await _friendService.addFriend(friend);
+    if (success) {
+      _searchController.clear();
+      setState(() {
+        _showSearchBar = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已添加好友 $phone')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('好友 $phone 已存在')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _buildSearchBar(),
+        // 地图
         Expanded(
           child: Stack(
             children: [
               FlutterMap(
                 mapController: _mapController,
-                options: const MapOptions(
-                  initialCenter: LatLng(39.908823, 116.397470),
+                options: MapOptions(
+                  initialCenter: LatLng(_myLat, _myLng),
                   initialZoom: 14,
                 ),
                 children: [
@@ -77,77 +128,94 @@ class _LocationPageState extends State<LocationPage> {
                   MarkerLayer(markers: _buildMarkers()),
                 ],
               ),
+              // 搜索栏（浮动在地图上）
+              if (_showSearchBar)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  top: 50,
+                  child: _buildSearchBar(),
+                ),
               Positioned(left: 12, top: 12, child: _buildFriendBubble()),
+              // 定位按钮 - 放在好友列表上方50dip
               Positioned(
                 right: 16,
-                bottom: 80,
-                child: Column(
-                  children: [
-                    _buildMapButton(Icons.add, ls.LocationStrings.addFriend, () {}),
-                    const SizedBox(height: 8),
-                    _buildMapButton(Icons.my_location, '', () {
-                      _mapController.move(const LatLng(39.956, 116.618), 14);
-                    }),
-                  ],
-                ),
+                bottom: 50,
+                child: _buildMapButton(Icons.my_location, '', () {
+                  _mapController.move(LatLng(_myLat, _myLng), 14);
+                }),
               ),
-              Positioned(left: 0, right: 0, bottom: 0, child: _buildPromoBanner()),
+              // 高德版权信息（透明背景，浮在地图上）
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildAmapAttribution(),
+              ),
             ],
           ),
         ),
-        _buildFriendsList(),
-        _buildAmapAttribution(),
+        // 好友列表（可展开/折叠）
+        _buildFriendsListSection(),
       ],
     );
   }
 
   Widget _buildSearchBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.white,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Row(
         children: [
+          const SizedBox(width: 16),
+          const Icon(Icons.search, color: Colors.grey),
+          const SizedBox(width: 8),
           Expanded(
-            child: Container(
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
+            child: TextField(
+              controller: _searchController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                hintText: '查找TA的手机号',
+                hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: _addFriend,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2D7AF6), // 品牌蓝色
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: ls.LocationStrings.addFriendHint,
-                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
-                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              elevation: 0,
             ),
+            child: const Text('查找好友', style: TextStyle(fontSize: 13)),
           ),
-          const SizedBox(width: 10),
-          SizedBox(
-            height: 40,
-            child: ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00C853),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-              ),
-              child: Text(ls.LocationStrings.addFriend, style: const TextStyle(fontSize: 13)),
-            ),
-          ),
+          const SizedBox(width: 8),
         ],
       ),
     );
   }
 
   Widget _buildFriendBubble() {
+    final friends = _friendService.friends;
+    if (friends.isEmpty) return const SizedBox.shrink();
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -160,9 +228,9 @@ class _LocationPageState extends State<LocationPage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(ls.LocationStrings.friendEmoji, style: const TextStyle(fontSize: 18)),
+          Text(friends.first.emoji, style: const TextStyle(fontSize: 18)),
           const SizedBox(width: 4),
-          Text(ls.LocationStrings.friendExample, style: const TextStyle(fontSize: 12, color: Colors.black87)),
+          Text(friends.first.name, style: const TextStyle(fontSize: 12, color: Colors.black87)),
         ],
       ),
     );
@@ -205,9 +273,12 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   List<Marker> _buildMarkers() {
-    return [
-      Marker(
-        point: const LatLng(39.908, 116.396),
+    final friends = _friendService.friends;
+    return friends.map((friend) {
+      final lat = friend.lat ?? _myLat;
+      final lng = friend.lng ?? _myLng;
+      return Marker(
+        point: LatLng(lat, lng),
         width: 40,
         height: 50,
         child: Column(
@@ -215,160 +286,221 @@ class _LocationPageState extends State<LocationPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: friend.phoneNumber == '18511698488'
+                    ? const Color(0xFFFFD700)
+                    : Colors.white,
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3)],
               ),
-              child: Text(ls.LocationStrings.friendEmoji, style: const TextStyle(fontSize: 18)),
-            ),
-            const Icon(Icons.location_on, color: Colors.blue, size: 24),
-          ],
-        ),
-      ),
-      Marker(
-        point: const LatLng(39.956, 116.618),
-        width: 40,
-        height: 50,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFD700),
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3)],
-              ),
-              child: Text('🐤 我', style: const TextStyle(fontSize: 12)),
+              child: Text(friend.emoji, style: const TextStyle(fontSize: 16)),
             ),
             const Icon(Icons.location_on, color: Colors.red, size: 24),
           ],
         ),
-      ),
-    ];
+      );
+    }).toList();
   }
 
-  Widget _buildPromoBanner() {
-    return Container(
-      height: 60,
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A1A66), Color(0xFF3D2B8A)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
+
+
+  Widget _buildFriendsListSection() {
+    final friends = _friendService.friends;
+
+    // 限制最多显示的数量
+    const maxItems = 4;
+    final actualDisplayCount = _isFriendsListExpanded
+        ? friends.length.clamp(0, maxItems)
+        : 0;
+
+    // 动态计算高度（标题栏始终显示）
+    const headerHeight = 48.0; // 标题栏高度
+    const itemHeight = 80.0; // 每个好友项的高度
+    final totalHeight = headerHeight + (actualDisplayCount * itemHeight);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      height: totalHeight,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
         ),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(width: 12),
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.amber[100],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Center(child: Text('🎟️', style: const TextStyle(fontSize: 22))),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  ls.LocationStrings.couponDesc,
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Text(
-                      _formatCountdown(_countdownSeconds),
-                      style: const TextStyle(color: Color(0xFFFFD700), fontSize: 13, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(ls.LocationStrings.limitedOffer, style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 10)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () {},
-            child: Container(
-              margin: const EdgeInsets.only(right: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-              child: Text(ls.LocationStrings.useNow, style: const TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w500)),
-            ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 10,
+            offset: Offset(0, -2),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildFriendsList() {
-    return Container(
-      color: Colors.grey[50],
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Text('${ls.LocationStrings.myFriends} (${_friends.length})', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87)),
+          // 标题栏（可点击展开/折叠）- 始终显示
+          GestureDetector(
+            onTap: _toggleFriendsList,
+            child: Container(
+              height: headerHeight,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              alignment: Alignment.centerLeft,
+              child: Row(
+                children: [
+                  Text(
+                    '我的好友 (${friends.length})',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _isFriendsListExpanded
+                        ? Icons.keyboard_arrow_down
+                        : Icons.keyboard_arrow_up,
+                    color: Colors.grey[600],
+                  ),
+                ],
+              ),
+            ),
           ),
-          ...List.generate(_friends.length, (i) => _buildFriendItem(_friends[i])),
-          const SizedBox(height: 4),
+          // 好友列表（折叠时隐藏）
+          if (_isFriendsListExpanded)
+            SizedBox(
+              height: actualDisplayCount * itemHeight,
+              child: ListView.builder(
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: actualDisplayCount,
+                itemBuilder: (context, index) {
+                  return _buildFriendItem(friends[index]);
+                },
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildFriendItem(Map<String, dynamic> friend) {
+  Widget _buildFriendItem(Friend friend) {
+    // 计算相对时间显示
+    String timeAgo = '刚刚';
+    if (friend.lastUpdateTime != null) {
+      final diff = DateTime.now().difference(friend.lastUpdateTime!);
+      if (diff.inMinutes > 0) {
+        timeAgo = '${diff.inMinutes}分钟前';
+      } else if (diff.inHours > 0) {
+        timeAgo = '${diff.inHours}小时前';
+      } else if (diff.inDays > 0) {
+        timeAgo = '${diff.inDays}天前';
+      }
+    }
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1),
+        ),
+      ),
       child: Row(
         children: [
-          Text(friend['avatar'], style: const TextStyle(fontSize: 32)),
-          const SizedBox(width: 10),
+          // 头像
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF2D7AF6), width: 2),
+            ),
+            child: Center(
+              child: Text(friend.emoji, style: const TextStyle(fontSize: 28)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 详细信息
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(friend['name'], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
+                // 名字 + VIP图标 + 时间
                 Row(
                   children: [
-                    const Icon(Icons.access_time, size: 12, color: Colors.grey),
-                    const SizedBox(width: 2),
-                    Text('${friend['date']} ${friend['time']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    Flexible(
+                      child: Text(
+                        friend.name,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF333333),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    // 金色勋章图标（模拟VIP）
+                    const Icon(
+                      Icons.verified,
+                      size: 16,
+                      color: Color(0xFFFFB800), // 金色
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      timeAgo,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF999999),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 2),
-                Row(
-                  children: [
-                    const Icon(Icons.location_on, size: 12, color: Colors.grey),
-                    const SizedBox(width: 2),
-                    Expanded(child: Text(friend['address'], style: const TextStyle(fontSize: 11, color: Colors.grey), overflow: TextOverflow.ellipsis)),
-                  ],
-                ),
+                // 城市 + 地址
+                if (friend.address != null)
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        size: 14,
+                        color: Colors.grey[500],
+                      ),
+                      const SizedBox(width: 2),
+                      Expanded(
+                        child: Text(
+                          friend.address!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF888888),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
-          ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00C853),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          const SizedBox(width: 8),
+          // 轨迹按钮（空心蓝框）
+          OutlinedButton(
+            onPressed: () {
+              // 移动地图到好友位置
+              if (friend.lat != null && friend.lng != null) {
+                _mapController.move(LatLng(friend.lat!, friend.lng!), 14);
+              }
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF2D7AF6),
+              side: const BorderSide(color: Color(0xFF2D7AF6), width: 1.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             ),
-            child: Text(ls.LocationStrings.historyTrack, style: const TextStyle(fontSize: 11)),
+            child: const Text(
+              '轨迹',
+              style: TextStyle(fontSize: 13),
+            ),
           ),
         ],
       ),
@@ -376,25 +508,31 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   Widget _buildAmapAttribution() {
+    // 透明背景，显示深色文字
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      color: Colors.grey[100],
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 16,
-            height: 16,
+            width: 14,
+            height: 14,
             decoration: BoxDecoration(
               color: const Color(0xFF02C1E0),
               borderRadius: BorderRadius.circular(3),
             ),
-            child: const Icon(Icons.navigation, size: 10, color: Colors.white),
+            child: const Icon(Icons.navigation, size: 9, color: Colors.white),
           ),
           const SizedBox(width: 4),
-          Text(ls.LocationStrings.amapAttr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-          const SizedBox(width: 4),
-          Text(ls.LocationStrings.amapCopyright, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+          Text(
+            ls.LocationStrings.amapAttr,
+            style: const TextStyle(fontSize: 10, color: Colors.black54),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            ls.LocationStrings.amapCopyright,
+            style: const TextStyle(fontSize: 9, color: Colors.black38),
+          ),
         ],
       ),
     );
