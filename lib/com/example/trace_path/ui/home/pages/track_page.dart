@@ -289,49 +289,104 @@ class _TrackPageState extends State<TrackPage> {
     final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
     final dayName = _getDayName(year, month, day);
 
-    return Container(
-      margin: const EdgeInsets.only(left: 60, top: 1),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: ListTile(
-        onTap: () => _openTrackMap(phone, year, month, day),
-        dense: true,
-        leading: const Icon(Icons.access_time, size: 16, color: Colors.grey),
-        title: Text(
-          '$dayName ($dateStr)',
-          style: const TextStyle(fontSize: 12),
+    return Dismissible(
+      key: Key('$phone/$year/$month/$day'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        margin: const EdgeInsets.only(left: 60, top: 1),
+        decoration: BoxDecoration(
+          color: Colors.red,
+          borderRadius: BorderRadius.circular(6),
         ),
-        trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      confirmDismiss: (direction) async {
+        return await _confirmDelete(phone, year, month, day);
+      },
+      onDismissed: (_) => _deleteTrackFile(phone, year, month, day),
+      child: GestureDetector(
+        onTap: () => _openTrackMap(phone, year, month, day),
+        child: Container(
+          margin: const EdgeInsets.only(left: 60, top: 1),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(left: 16),
+                child: Icon(Icons.access_time, size: 16, color: Colors.grey),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    '$dayName ($dateStr)',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   /// 扁平化日期显示（如20230329）
   Widget _buildDayItemFlat(String phone, String year, String month, String day) {
-    // 格式: 20230329
     final dateStr = '$year$month$day';
     final yearInt = int.parse(year);
     final monthInt = int.parse(month);
     final dayInt = int.parse(day);
     final dayName = _getDayName(yearInt, monthInt, dayInt);
 
-    return Container(
-      margin: const EdgeInsets.only(left: 20, top: 2),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: ListTile(
-        onTap: () => _openTrackMap(phone, yearInt, monthInt, dayInt),
-        dense: true,
-        leading: const Icon(Icons.access_time, size: 16, color: Color(0xFF2D7AF6)),
-        title: Text(
-          '$dayName ($dateStr)',
-          style: const TextStyle(fontSize: 13, color: Color(0xFF2D7AF6)),
+    return Dismissible(
+      key: Key('$phone/$year/$month/$day'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        margin: const EdgeInsets.only(left: 20, top: 2),
+        decoration: BoxDecoration(
+          color: Colors.red,
+          borderRadius: BorderRadius.circular(6),
         ),
-        trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      confirmDismiss: (direction) async {
+        return await _confirmDelete(phone, yearInt, monthInt, dayInt);
+      },
+      onDismissed: (_) => _deleteTrackFile(phone, yearInt, monthInt, dayInt),
+      child: GestureDetector(
+        onTap: () => _openTrackMap(phone, yearInt, monthInt, dayInt),
+        child: Container(
+          margin: const EdgeInsets.only(left: 20, top: 2),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(left: 16),
+                child: Icon(Icons.access_time, size: 16, color: Color(0xFF2D7AF6)),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    '$dayName ($dateStr)',
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF2D7AF6)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
