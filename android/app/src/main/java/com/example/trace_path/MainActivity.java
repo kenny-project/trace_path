@@ -128,7 +128,11 @@ public class MainActivity extends FlutterActivity {
                     }
                     result.success(true);
                 } else if (call.method.equals("isRunning")) {
-                    result.success(false);
+                    // 从SharedPreferences读取服务运行状态
+                    android.content.SharedPreferences prefs = getSharedPreferences("location_service_prefs", MODE_PRIVATE);
+                    boolean isRunning = prefs.getBoolean("service_running", false);
+                    android.util.Log.d("MainActivity", "isRunning check: service_running=" + isRunning);
+                    result.success(isRunning);
                 } else {
                     result.notImplemented();
                 }

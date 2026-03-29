@@ -17,7 +17,8 @@ class LocationPage extends StatefulWidget {
 class _LocationPageState extends State<LocationPage> {
   final TextEditingController _searchController = TextEditingController();
   final MapController _mapController = MapController();
-  final BackgroundLocationService _locationService = BackgroundLocationService();
+  final BackgroundLocationService _locationService =
+      BackgroundLocationService();
   final FriendService _friendService = FriendService();
 
   // 当前位置
@@ -32,6 +33,7 @@ class _LocationPageState extends State<LocationPage> {
 
   // 地图状态
   double _currentZoom = 14;
+  double _currentRotation = 0;
 
   @override
   void initState() {
@@ -76,9 +78,9 @@ class _LocationPageState extends State<LocationPage> {
   Future<void> _addFriend() async {
     final phone = _searchController.text.trim();
     if (phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入手机号')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入手机号')));
       return;
     }
 
@@ -97,13 +99,13 @@ class _LocationPageState extends State<LocationPage> {
       setState(() {
         _showSearchBar = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已添加好友 $phone')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已添加好友 $phone')));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('好友 $phone 已存在')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('好友 $phone 已存在')));
     }
   }
 
@@ -136,6 +138,7 @@ class _LocationPageState extends State<LocationPage> {
     _mapController.rotate(0);
     setState(() {
       _currentZoom = 14;
+      _currentRotation = 0;
     });
   }
 
@@ -159,8 +162,11 @@ class _LocationPageState extends State<LocationPage> {
                   ),
                   onTap: _onMapTap,
                   onPositionChanged: (position, hasGesture) {
-                    if (hasGesture && position.zoom != null) {
-                      _currentZoom = position.zoom!;
+                    if (hasGesture) {
+                      if (position.zoom != null) {
+                        _currentZoom = position.zoom!;
+                      }
+                      _currentRotation = _mapController.camera.rotation;
                       setState(() {});
                     }
                   },
@@ -176,33 +182,31 @@ class _LocationPageState extends State<LocationPage> {
                   MarkerLayer(markers: _buildMarkers()),
                 ],
               ),
-              // 指南针（右上角）
+              // 指南针（左侧，搜索栏下方）
+              Positioned(left: 16, top: 130, child: _buildCompass()),
+              // 缩放按钮 + 定位按钮（右侧，好友列表上方）
               Positioned(
                 right: 16,
-                top: 50,
-                child: _buildCompass(),
-              ),
-              // 缩放按钮（左下角）
-              Positioned(
-                left: 16,
-                bottom: _isFriendsListExpanded ? 250 : 100,
-                child: _buildZoomControls(),
-              ),
-              // 比例尺（右下角）
-              Positioned(
-                right: 60,
                 bottom: 16,
-                child: _buildScaleBar(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildLocationButton(),
+                    const SizedBox(height: 8),
+                    _buildZoomControls(),
+                  ],
+                ),
               ),
+              // 比例尺（左下角）
+              Positioned(left: 16, bottom: 16, child: _buildScaleBar()),
               // 搜索栏（浮动在地图上）
               if (_showSearchBar)
                 Positioned(
                   left: 16,
-                  right: 80,
+                  right: 16,
                   top: 50,
                   child: _buildSearchBar(),
                 ),
-              Positioned(left: 12, top: 12, child: _buildFriendBubble()),
               // 高德版权信息（透明背景，浮在地图上）
               Positioned(
                 left: 0,
@@ -229,12 +233,44 @@ class _LocationPageState extends State<LocationPage> {
         decoration: BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 6,
+            ),
+          ],
+        ),
+        child: Transform.rotate(
+          angle: _currentRotation * 3.14159 / 180, // 转换为弧度
+          child: const Icon(Icons.navigation, color: Color(0xFF2D7AF6), size: 28),
+        ),
+      ),
+    );
+  }
+
+  /// 定位按钮
+  Widget _buildLocationButton() {
+    return GestureDetector(
+      onTap: () {
+        _mapController.move(LatLng(_myLat, _myLng), 14);
+      },
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 6,
+            ),
+          ],
         ),
         child: const Icon(
-          Icons.navigation,
+          Icons.my_location,
           color: Color(0xFF2D7AF6),
-          size: 28,
+          size: 24,
         ),
       ),
     );
@@ -246,7 +282,9 @@ class _LocationPageState extends State<LocationPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -306,14 +344,20 @@ class _LocationPageState extends State<LocationPage> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(4),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             distance,
-            style: const TextStyle(fontSize: 11, color: Colors.black87, fontWeight: FontWeight.w500),
+            style: const TextStyle(
+              fontSize: 11,
+              color: Colors.black87,
+              fontWeight: FontWeight.w500,
+            ),
           ),
           const SizedBox(height: 2),
           Container(
@@ -325,11 +369,7 @@ class _LocationPageState extends State<LocationPage> {
             ),
           ),
           const SizedBox(height: 2),
-          Container(
-            width: 40,
-            height: 1,
-            color: Colors.white,
-          ),
+          Container(width: 40, height: 1, color: Colors.white),
         ],
       ),
     );
@@ -396,7 +436,11 @@ class _LocationPageState extends State<LocationPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Row(
@@ -404,7 +448,10 @@ class _LocationPageState extends State<LocationPage> {
         children: [
           Text(friends.first.emoji, style: const TextStyle(fontSize: 18)),
           const SizedBox(width: 4),
-          Text(friends.first.name, style: const TextStyle(fontSize: 12, color: Colors.black87)),
+          Text(
+            friends.first.name,
+            style: const TextStyle(fontSize: 12, color: Colors.black87),
+          ),
         ],
       ),
     );
@@ -428,7 +475,12 @@ class _LocationPageState extends State<LocationPage> {
                     ? const Color(0xFFFFD700)
                     : Colors.white,
                 borderRadius: BorderRadius.circular(8),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3)],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 3,
+                  ),
+                ],
               ),
               child: Text(friend.emoji, style: const TextStyle(fontSize: 16)),
             ),
@@ -438,8 +490,6 @@ class _LocationPageState extends State<LocationPage> {
       );
     }).toList();
   }
-
-
 
   Widget _buildFriendsListSection() {
     final friends = _friendService.friends;
@@ -537,9 +587,7 @@ class _LocationPageState extends State<LocationPage> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
       ),
       child: Row(
         children: [
@@ -635,10 +683,7 @@ class _LocationPageState extends State<LocationPage> {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             ),
-            child: const Text(
-              '轨迹',
-              style: TextStyle(fontSize: 13),
-            ),
+            child: const Text('轨迹', style: TextStyle(fontSize: 13)),
           ),
         ],
       ),

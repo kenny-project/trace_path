@@ -39,10 +39,8 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
     if (mounted) {
       setState(() {
         _isServiceRunning = running;
-        // 如果服务正在运行，开关状态应该反映服务运行状态
-        if (running) {
-          _enabled = true;
-        }
+        // 开关状态应该完全反映服务运行状态
+        _enabled = running;
       });
     }
   }

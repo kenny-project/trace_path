@@ -67,6 +67,9 @@ public class LocationForegroundService extends Service {
             powerSaving = intent.getBooleanExtra("power_saving", false);
             long interval = intent.getLongExtra("interval", MIN_INTERVAL_DEFAULT);
             android.util.Log.d("LocationForegroundService", "interval=" + interval + ", powerSaving=" + powerSaving);
+            // 保存服务状态
+            prefs.edit().putBoolean("service_running", true).apply();
+            android.util.Log.d("LocationForegroundService", "service_running 设置为 true");
             try {
                 startForeground(NOTIFICATION_ID, buildNotification("实时定位服务运行中", "等待定位..."));
                 android.util.Log.d("LocationForegroundService", "startForeground 成功!");
@@ -76,6 +79,9 @@ public class LocationForegroundService extends Service {
             startLocationUpdates(interval);
         } else if ("com.example.trace_path.STOP".equals(action)) {
             isTracking = false;
+            // 保存服务状态
+            prefs.edit().putBoolean("service_running", false).apply();
+            android.util.Log.d("LocationForegroundService", "service_running 设置为 false");
             stopLocationUpdates();
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
@@ -237,7 +243,7 @@ public class LocationForegroundService extends Service {
             if (!dir.exists()) dir.mkdirs();
             File file = new File(dir, day + ".csv");
 
-            // 检查是否需要写入表头
+            // check if need to write header
             boolean needsHeader = !file.exists() || file.length() == 0;
             
             FileWriter fw = new FileWriter(file, true);
