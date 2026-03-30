@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:trace_path/constants/colors.dart';
 import '../../../services/location_settings_service.dart';
 import '../../../services/background_location_service.dart';
+import '../../../services/user_service.dart';
+import '../../../services/friend_service.dart';
 import '../../../widgets/location_settings_dialog.dart';
 import 'permission_settings_page.dart';
+import 'login_page.dart';
 import 'package:trace_path/constants/strings.dart';
 import 'package:trace_path/constants/mine_strings.dart' as ms;
 
@@ -17,6 +20,8 @@ class MinePage extends StatefulWidget {
 class _MinePageState extends State<MinePage> {
   final LocationSettingsService _settingsService = LocationSettingsService();
   final BackgroundLocationService _locationService = BackgroundLocationService();
+  final UserService _userService = UserService();
+  final FriendService _friendService = FriendService();
 
   @override
   void initState() {
@@ -24,6 +29,43 @@ class _MinePageState extends State<MinePage> {
     _locationService.init().catchError((e) {
       print('[MinePage] init 异常: $e');
     });
+    _initUser();
+  }
+
+  Future<void> _initUser() async {
+    await _userService.init();
+    setState(() {});
+  }
+
+  /// 跳转到登录页面
+  void _goToLogin() {
+    if (_userService.isLoggedIn) {
+      _showToast('当前已登录');
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+    ).then((_) {
+      // 登录返回后刷新
+      setState(() {});
+    });
+  }
+
+  /// 处理退出登录
+  Future<void> _handleLogout() async {
+    await _userService.clearUser();
+    // 清空好友列表，重新初始化"我自己"
+    _friendService.clearAllFriends();
+    await _friendService.init();
+    setState(() {});
+    _showToast('已退出登录');
+  }
+
+  void _showToast(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
+    );
   }
 
   static const Color primaryGreen = AppColors.primary;
@@ -75,7 +117,7 @@ class _MinePageState extends State<MinePage> {
               ),
               const SizedBox(height: 16),
               const Divider(height: 1, color: dividerColor),
-              _buildLogoutButton(),
+              if (_userService.isLoggedIn) _buildLogoutButton(),
               const SizedBox(height: 24),
             ],
           ),
@@ -127,12 +169,15 @@ class _MinePageState extends State<MinePage> {
   }
 
   Widget _buildAvatarSection() {
+    final phone = _userService.currentPhoneNumber;
+    final isLoggedIn = phone != null;
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 32),
       child: Column(
         children: [
           GestureDetector(
-            onTap: () {},
+            onTap: _goToLogin,
             child: Container(
               width: 72,
               height: 72,
@@ -145,9 +190,9 @@ class _MinePageState extends State<MinePage> {
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () {},
+            onTap: _goToLogin,
             child: Text(
-              ms.MineStrings.clickToLogin,
+              isLoggedIn ? phone : ms.MineStrings.clickToLogin,
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -247,7 +292,7 @@ class _MinePageState extends State<MinePage> {
         width: double.infinity,
         height: 48,
         child: ElevatedButton(
-          onPressed: () {},
+          onPressed: _handleLogout,
           style: ElevatedButton.styleFrom(
             backgroundColor: logoutRed,
             foregroundColor: Colors.white,

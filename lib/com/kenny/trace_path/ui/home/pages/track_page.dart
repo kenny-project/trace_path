@@ -75,31 +75,53 @@ class _TrackPageState extends State<TrackPage> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _buildContent(),
+          : RefreshIndicator(
+              onRefresh: _onRefresh,
+              color: AppColors.primary,
+              child: _buildContent(),
+            ),
     );
   }
 
   Widget _buildContent() {
     if (_hierarchy.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.route, size: 64, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            Text(
-              '暂无轨迹数据',
-              style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height - 200,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.route, size: 64, color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    '暂无轨迹数据',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '下拉刷新试试',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: _buildHierarchyList(),
     );
+  }
+
+  Future<void> _onRefresh() async {
+    await _loadData();
   }
 
   List<Widget> _buildHierarchyList() {

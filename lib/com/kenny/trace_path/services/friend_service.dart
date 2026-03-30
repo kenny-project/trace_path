@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import '../models/friend_model.dart';
+import 'user_service.dart';
 
 /// 好友服务（单例）
 /// 管理好友列表的持久化
@@ -11,6 +12,11 @@ class FriendService {
   FriendService._();
 
   static const String _fileName = 'friends.json';
+  static const String _defaultSelfPhone = '1000000'; // 默认"我自己"手机号
+  static const String _defaultSelfName = '我自己';
+  static const String _defaultSelfEmoji = '🐤';
+
+  final UserService _userService = UserService();
 
   List<Friend> _friends = [];
 
@@ -19,13 +25,42 @@ class FriendService {
   /// 初始化，加载本地数据
   Future<void> init() async {
     await _load();
-    // 如果列表为空，添加默认用户
-    if (_friends.isEmpty) {
-      _friends.add(Friend(
-        phoneNumber: '18511698488',
-        name: '我自己',
-        emoji: '🐤',
+    // 确保"我自己"存在
+    await _ensureSelfExists();
+  }
+
+  /// 确保"我自己"存在
+  Future<void> _ensureSelfExists() async {
+    // 获取当前登录用户手机号，如果没登录则使用默认
+    final selfPhone = _userService.currentPhoneNumber ?? _defaultSelfPhone;
+
+    // 查找"我自己"
+    final selfIndex = _friends.indexWhere((f) => f.name == _defaultSelfName);
+
+    if (selfIndex == -1) {
+      // 不存在，添加"我自己"
+      _friends.insert(0, Friend(
+        phoneNumber: selfPhone,
+        name: _defaultSelfName,
+        emoji: _defaultSelfEmoji,
       ));
+      await _save();
+    } else {
+      // 存在，更新手机号（登录后可能变化）
+      _friends[selfIndex] = _friends[selfIndex].copyWith(phoneNumber: selfPhone);
+      await _save();
+    }
+  }
+
+  /// 更新"我自己"信息（登录后调用）
+  Future<void> updateSelf({String? phoneNumber, String? name, String? emoji}) async {
+    final selfIndex = _friends.indexWhere((f) => f.name == _defaultSelfName);
+    if (selfIndex != -1) {
+      _friends[selfIndex] = _friends[selfIndex].copyWith(
+        phoneNumber: phoneNumber ?? _friends[selfIndex].phoneNumber,
+        name: name ?? _defaultSelfName,
+        emoji: emoji ?? _defaultSelfEmoji,
+      );
       await _save();
     }
   }
@@ -48,6 +83,12 @@ class FriendService {
     _friends.removeAt(index);
     await _save();
     return true;
+  }
+
+  /// 清空所有好友（退出登录时使用）
+  Future<void> clearAllFriends() async {
+    _friends.clear();
+    await _save();
   }
 
   /// 更新好友位置

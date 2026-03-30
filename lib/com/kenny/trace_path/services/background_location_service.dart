@@ -98,6 +98,7 @@ class BackgroundLocationService {
   }
 
   /// 获取当前位置（WGS84转GCJ-02用于高德地图显示）
+  /// 实现了 GPS → 网络定位 的 fallback 策略
   Future<Position?> getCurrentPosition() async {
     String timeStr(DateTime t) => '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}:${t.second.toString().padLeft(2,'0')}.${t.millisecond.toString().padLeft(3,'0')}';
     
@@ -108,34 +109,94 @@ class BackgroundLocationService {
         return null;
       }
 
+      // ========== 策略1: 优先 GPS ==========
       final reqStart = DateTime.now();
       print('[BackgroundLocationService] GPS request START, time=${timeStr(reqStart)}');
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      final diff = DateTime.now().difference(reqStart);
-      print('[BackgroundLocationService] GPS result, time=${timeStr(DateTime.now())}, diff_time=${diff.inMilliseconds}ms, lat=${position.latitude}, lng=${position.longitude}');
+      
+      Position? position = await _getGpsPosition(timeStr);
+      
+      if (position != null && position.accuracy < 100) {
+        // GPS 定位成功且精度 < 100米
+        print('[BackgroundLocationService] GPS 定位成功, time=${timeStr(DateTime.now())}, acc=${position.accuracy}m');
+        return _convertToGcj02(position);
+      }
 
-      // WGS84 转 GCJ-02（中国坐标系）
-      final gcj02 = wgs84ToGcj02(position.latitude, position.longitude);
+      // ========== 策略2: GPS 失败或精度差 → 网络定位 ==========
+      print('[BackgroundLocationService] GPS 定位失败或精度差，尝试网络定位...');
+      position = await _getNetworkPosition(timeStr);
+      
+      if (position != null) {
+        print('[BackgroundLocationService] 网络定位成功, time=${timeStr(DateTime.now())}, acc=${position.accuracy}m');
+        return _convertToGcj02(position);
+      }
 
-      // 返回转换后的坐标（通过创建新的Position）
-      return Position(
-        latitude: gcj02[0],
-        longitude: gcj02[1],
-        timestamp: position.timestamp,
-        accuracy: position.accuracy,
-        altitude: position.altitude,
-        altitudeAccuracy: position.altitudeAccuracy,
-        heading: position.heading,
-        headingAccuracy: position.headingAccuracy,
-        speed: position.speed,
-        speedAccuracy: position.speedAccuracy,
-      );
+      // ========== 策略3: 全部失败 ==========
+      print('[BackgroundLocationService] 所有定位方式均失败');
+      return null;
     } catch (e) {
       print('[BackgroundLocationService] getCurrentPosition 异常: $e');
       return null;
     }
+  }
+
+  /// 获取 GPS 定位
+  Future<Position?> _getGpsPosition(String Function(DateTime) timeStr) async {
+    try {
+      final reqStart = DateTime.now();
+      print('[BackgroundLocationService] GPS START, time=${timeStr(reqStart)}');
+      
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(seconds: 15),  // 15秒超时
+      );
+      
+      final diff = DateTime.now().difference(reqStart);
+      print('[BackgroundLocationService] GPS result, time=${timeStr(DateTime.now())}, diff=${diff.inMilliseconds}ms, acc=${position.accuracy}m');
+      
+      return position;
+    } catch (e) {
+      print('[BackgroundLocationService] GPS 异常: $e');
+      return null;
+    }
+  }
+
+  /// 获取网络定位（Wi-Fi/基站）
+  Future<Position?> _getNetworkPosition(String Function(DateTime) timeStr) async {
+    try {
+      final reqStart = DateTime.now();
+      print('[BackgroundLocationService] Network START, time=${timeStr(reqStart)}');
+      
+      // 使用低功耗模式请求网络定位
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 10),  // 网络定位通常更快
+      );
+      
+      final diff = DateTime.now().difference(reqStart);
+      print('[BackgroundLocationService] Network result, time=${timeStr(DateTime.now())}, diff=${diff.inMilliseconds}ms, acc=${position.accuracy}m');
+      
+      return position;
+    } catch (e) {
+      print('[BackgroundLocationService] Network 异常: $e');
+      return null;
+    }
+  }
+
+  /// 坐标系转换（WGS84 → GCJ-02）
+  Position _convertToGcj02(Position position) {
+    final gcj02 = wgs84ToGcj02(position.latitude, position.longitude);
+    return Position(
+      latitude: gcj02[0],
+      longitude: gcj02[1],
+      timestamp: position.timestamp,
+      accuracy: position.accuracy,
+      altitude: position.altitude,
+      altitudeAccuracy: position.altitudeAccuracy,
+      heading: position.heading,
+      headingAccuracy: position.headingAccuracy,
+      speed: position.speed,
+      speedAccuracy: position.speedAccuracy,
+    );
   }
 
   /// WGS84 坐标系转 GCJ-02 坐标系（用于中国境内高德/腾讯地图）

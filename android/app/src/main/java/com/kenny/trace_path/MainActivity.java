@@ -128,11 +128,22 @@ public class MainActivity extends FlutterActivity {
                     }
                     result.success(true);
                 } else if (call.method.equals("isRunning")) {
-                    // 从SharedPreferences读取服务运行状态
-                    android.content.SharedPreferences prefs = getSharedPreferences("location_service_prefs", MODE_PRIVATE);
-                    boolean isRunning = prefs.getBoolean("service_running", false);
-                    android.util.Log.d("MainActivity", "isRunning check: service_running=" + isRunning);
-                    result.success(isRunning);
+                    // 使用 ActivityManager 检查真实运行状态
+                    try {
+                        android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(android.content.Context.ACTIVITY_SERVICE);
+                        for (android.app.ActivityManager.RunningServiceInfo service : am.getRunningServices(Integer.MAX_VALUE)) {
+                            if ("com.kenny.trace_path.LocationForegroundService".equals(service.service.getClassName())) {
+                                android.util.Log.d("MainActivity", "isRunning: service is ACTIVE");
+                                result.success(true);
+                                return;
+                            }
+                        }
+                        android.util.Log.d("MainActivity", "isRunning: service NOT found");
+                        result.success(false);
+                    } catch (Exception e) {
+                        android.util.Log.e("MainActivity", "isRunning check error: " + e.getMessage());
+                        result.success(false);
+                    }
                 } else {
                     result.notImplemented();
                 }
