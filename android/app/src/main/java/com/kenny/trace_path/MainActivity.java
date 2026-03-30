@@ -127,6 +127,19 @@ public class MainActivity extends FlutterActivity {
                         MainActivity.this.startService(intent);
                     }
                     result.success(true);
+                } else if (call.method.equals("setPhoneNumber")) {
+                    // 保存手机号到 SharedPreferences，供 LocationForegroundService 读取
+                    String phoneNumber = null;
+                    if (call.arguments() != null && call.arguments() instanceof java.util.Map) {
+                        java.util.Map args = (java.util.Map) call.arguments();
+                        phoneNumber = args.containsKey("phoneNumber") ? (String) args.get("phoneNumber") : null;
+                    }
+                    if (phoneNumber != null) {
+                        android.content.SharedPreferences prefs = getSharedPreferences("location_service_prefs", MODE_PRIVATE);
+                        prefs.edit().putString("phone_number", phoneNumber).apply();
+                        android.util.Log.d("MainActivity", "setPhoneNumber: " + phoneNumber);
+                    }
+                    result.success(true);
                 } else if (call.method.equals("isRunning")) {
                     // 使用 ActivityManager 检查真实运行状态
                     try {

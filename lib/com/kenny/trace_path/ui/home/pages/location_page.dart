@@ -8,6 +8,7 @@ import 'package:trace_path/constants/location_strings.dart' as ls;
 import '../../../services/background_location_service.dart';
 import '../../../services/friend_service.dart';
 import '../../../models/friend_model.dart';
+import '../../../models/location_event.dart';
 
 class LocationPage extends StatefulWidget {
   const LocationPage({super.key});
@@ -38,8 +39,8 @@ class _LocationPageState extends State<LocationPage>
   double _currentZoom = 14;
   double _currentRotation = 0;
 
-  // 定时刷新
-  Timer? _locationTimer;
+  // 定位订阅
+  VoidCallback? _locationUnsubscribe;
   bool _isPageActive = true;
   bool _isInitialLocationLoaded = false;
 
@@ -54,6 +55,9 @@ class _LocationPageState extends State<LocationPage>
     WidgetsBinding.instance.addObserver(this);
     _friendService.init();
 
+    // 订阅定位更新
+    _locationUnsubscribe = _locationService.subscribe(_onLocationEvent);
+
     // 地图渲染完成回调（测量地图加载时间）
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final mapLoadEnd = DateTime.now();
@@ -67,14 +71,13 @@ class _LocationPageState extends State<LocationPage>
     _loadSavedLocation();
     // 再异步加载当前位置
     _loadCurrentLocation();
-    _startLocationTimer();
     print('[LocationPage] Page init END, time=${timeStr(DateTime.now())}');
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _stopLocationTimer();
+    _locationUnsubscribe?.call();
     super.dispose();
   }
 
@@ -82,61 +85,58 @@ class _LocationPageState extends State<LocationPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _isPageActive = true;
-      _startLocationTimer();
     } else if (state == AppLifecycleState.paused) {
       _isPageActive = false;
-      _stopLocationTimer();
     }
   }
 
-  void _startLocationTimer() {
-    _stopLocationTimer();
-    if (_isPageActive) {
-      _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-        _refreshCurrentLocation();
-      });
-    }
-  }
-
-  void _stopLocationTimer() {
-    _locationTimer?.cancel();
-    _locationTimer = null;
-  }
-
-  Future<void> _refreshCurrentLocation() async {
+  /// 处理定位事件（来自 BackgroundLocationService 广播）
+  void _onLocationEvent(LocationEvent event) {
     if (!_isPageActive) return;
+    
+    switch (event.type) {
+      case LocationEventType.locationUpdate:
+        if (event.position != null) {
+          final position = event.position!;
+          setState(() {
+            _myLat = position.latitude;
+            _myLng = position.longitude;
+            _isLoadingLocation = false;
+          });
+          _updateFriendLocation(position.latitude, position.longitude);
+        }
+        break;
+      case LocationEventType.serviceStart:
+        print('[LocationPage] 服务已启动');
+        break;
+      case LocationEventType.serviceStop:
+        print('[LocationPage] 服务已停止');
+        break;
+      case LocationEventType.error:
+        print('[LocationPage] 定位错误: ${event.errorMessage}');
+        break;
+    }
+  }
+
+  /// 更新好友位置和地址
+  Future<void> _updateFriendLocation(double lat, double lng) async {
     try {
-      final position = await _locationService.getCurrentPosition().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => null,
+      final address = await _locationService.getAddressFromLatLng(lat, lng);
+      await _friendService.updateFriendLocation(
+        _friendService.getSelfPhone(),
+        lat,
+        lng,
+        address: address,
       );
-      if (position != null && mounted && _isPageActive) {
-        setState(() {
-          _myLat = position.latitude;
-          _myLng = position.longitude;
-          _isLoadingLocation = false;
-        });
-        // 获取地址并更新
-        final address = await _locationService.getAddressFromLatLng(
-          _myLat,
-          _myLng,
-        );
-        await _friendService.updateFriendLocation(
-          '18511698488',
-          _myLat,
-          _myLng,
-          address: address,
-        );
-      }
     } catch (e) {
-      print('[LocationPage] _refreshCurrentLocation error: $e');
+      print('[LocationPage] _updateFriendLocation error: $e');
     }
   }
 
   /// 加载保存的上一次位置，不阻塞UI
   Future<void> _loadSavedLocation() async {
     final savedStart = DateTime.now();
-    final saved = await _friendService.getFriend('18511698488');
+    final saved = await _friendService.getFriend(_friendService.getSelfPhone());
     if (saved != null && saved.lat != null && saved.lng != null && mounted) {
       _isInitialLocationLoaded = true;
       setState(() {
@@ -150,16 +150,14 @@ class _LocationPageState extends State<LocationPage>
   }
 
   Future<void> _loadCurrentLocation() async {
-    // 已经在子线程执行，不阻塞UI
+    // 初始位置获取，后续由订阅自动更新
     try {
       final position = await _locationService.getCurrentPosition().timeout(
         const Duration(seconds: 10),
         onTimeout: () => null,
       );
-      // 确保在主线程更新UI
       if (position != null && mounted) {
         if (!_isInitialLocationLoaded) {
-          // 首次加载才更新位置，否则只用新位置更新好友
           setState(() {
             _myLat = position.latitude;
             _myLng = position.longitude;
@@ -167,20 +165,7 @@ class _LocationPageState extends State<LocationPage>
           });
           _mapController.move(LatLng(_myLat, _myLng), 14);
         }
-        // 获取地址并更新好友位置
-        final address = await _locationService.getAddressFromLatLng(
-          _myLat,
-          _myLng,
-        );
-        await _friendService.updateFriendLocation(
-          '18511698488',
-          position.latitude,
-          position.longitude,
-          address: address,
-        );
-        // 同步更新当前位置变量
-        _myLat = position.latitude;
-        _myLng = position.longitude;
+        _updateFriendLocation(position.latitude, position.longitude);
       }
     } catch (e) {
       print('[LocationPage] _loadCurrentLocation error: $e');
@@ -610,7 +595,7 @@ class _LocationPageState extends State<LocationPage>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: friend.phoneNumber == '18511698488'
+                color: friend.name == '我自己'
                     ? AppColors.vipGold
                     : Colors.white,
                 borderRadius: BorderRadius.circular(8),

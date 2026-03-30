@@ -4,6 +4,59 @@ import 'package:path_provider/path_provider.dart';
 import '../models/friend_model.dart';
 import 'user_service.dart';
 
+/// 好友存储接口（用于依赖注入和测试）
+abstract class FriendStorage {
+  Future<List<Friend>> load();
+  Future<void> save(List<Friend> friends);
+  Future<void> clear();
+}
+
+/// 基于文件的好友存储实现
+class FileBasedFriendStorage implements FriendStorage {
+  static const String _fileName = 'friends.json';
+
+  @override
+  Future<List<Friend>> load() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_fileName');
+      if (!await file.exists()) return [];
+
+      final content = await file.readAsString();
+      final List<dynamic> jsonList = jsonDecode(content);
+      return jsonList.map((json) => Friend.fromJson(json as Map<String, dynamic>)).toList();
+    } catch (e) {
+      print('[FileBasedFriendStorage] 加载失败: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<void> save(List<Friend> friends) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_fileName');
+      final jsonList = friends.map((f) => f.toJson()).toList();
+      await file.writeAsString(jsonEncode(jsonList));
+    } catch (e) {
+      print('[FileBasedFriendStorage] 保存失败: $e');
+    }
+  }
+
+  @override
+  Future<void> clear() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_fileName');
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (e) {
+      print('[FileBasedFriendStorage] 清除失败: $e');
+    }
+  }
+}
+
 /// 好友服务（单例）
 /// 管理好友列表的持久化
 class FriendService {
@@ -11,16 +64,23 @@ class FriendService {
   factory FriendService() => _instance;
   FriendService._();
 
-  static const String _fileName = 'friends.json';
   static const String _defaultSelfPhone = '1000000'; // 默认"我自己"手机号
   static const String _defaultSelfName = '我自己';
   static const String _defaultSelfEmoji = '🐤';
 
   final UserService _userService = UserService();
 
+  // 存储实现（默认使用文件存储）
+  FriendStorage _storage = FileBasedFriendStorage();
+
   List<Friend> _friends = [];
 
   List<Friend> get friends => List.unmodifiable(_friends);
+
+  /// 设置自定义存储（用于测试注入）
+  void setStorage(FriendStorage storage) {
+    _storage = storage;
+  }
 
   /// 初始化，加载本地数据
   Future<void> init() async {
@@ -63,6 +123,16 @@ class FriendService {
       );
       await _save();
     }
+  }
+
+  /// 获取"我自己"的手机号
+  String getSelfPhone() {
+    final selfIndex = _friends.indexWhere((f) => f.name == _defaultSelfName);
+    if (selfIndex != -1) {
+      return _friends[selfIndex].phoneNumber;
+    }
+    // 如果不存在，返回默认手机号
+    return _defaultSelfPhone;
   }
 
   /// add friend
@@ -114,30 +184,28 @@ class FriendService {
     }
   }
 
-  /// 从本地加载
+  /// 从本地加载（通过存储接口）
   Future<void> _load() async {
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/$_fileName');
-      if (!await file.exists()) return;
-
-      final content = await file.readAsString();
-      final List<dynamic> jsonList = jsonDecode(content);
-      _friends = jsonList.map((json) => Friend.fromJson(json as Map<String, dynamic>)).toList();
-    } catch (e) {
-      print('[FriendService] 加载失败: $e');
-    }
+    _friends = await _storage.load();
   }
 
-  /// 保存到本地
+  /// _loadFromFile 是 FileBasedFriendStorage 使用的别名，保持向后兼容
+  Future<void> _loadFromFile() async {
+    _friends = await FileBasedFriendStorage().load();
+  }
+
+  /// 保存到本地（通过存储接口）
   Future<void> _save() async {
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/$_fileName');
-      final jsonList = _friends.map((f) => f.toJson()).toList();
-      await file.writeAsString(jsonEncode(jsonList));
-    } catch (e) {
-      print('[FriendService] 保存失败: $e');
-    }
+    await _storage.save(_friends);
+  }
+
+  /// _saveToFile 是 FileBasedFriendStorage 使用的别名，保持向后兼容
+  Future<void> _saveToFile(List<Friend> friends) async {
+    await FileBasedFriendStorage().save(friends);
+  }
+
+  /// _clearFile 清除文件
+  Future<void> _clearFile() async {
+    await _storage.clear();
   }
 }

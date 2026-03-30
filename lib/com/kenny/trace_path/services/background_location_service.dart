@@ -2,14 +2,21 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as Math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
+import '../models/location_event.dart';
 import 'location_settings_service.dart';
+import 'track_recorder.dart';
+import 'user_service.dart';
 
-/// 后台定位服务（使用原生 Android 前台服务）
-/// 通过 MethodChannel 控制 LocationForegroundService
+/// 定位服务回调类型
+typedef LocationCallback = void Function(LocationEvent event);
+
+/// 后台定位服务（单例）
+/// 统一管理定位，作为消息中心向各订阅者分发位置更新
 class BackgroundLocationService {
   static final BackgroundLocationService _instance = BackgroundLocationService._();
   factory BackgroundLocationService() => _instance;
@@ -18,50 +25,99 @@ class BackgroundLocationService {
   static const _channel = MethodChannel('com.kenny.trace_path/location_service');
 
   final LocationSettingsService _settingsService = LocationSettingsService();
+  final UserService _userService = UserService();
 
-  /// 初始化
+  // ========== 订阅者管理 ==========
+  final List<LocationCallback> _subscribers = [];
+  bool _isSubscribed = false;
+
+  // ========== 定位状态 ==========
+  Timer? _locationTimer;
+  bool _isTracking = false;
+  int _intervalSeconds = 30;
+  bool _powerSaving = false;
+
+  // ========== 初始化 ==========
   Future<void> init() async {
     await _settingsService.load();
   }
 
-  /// 启动服务
+  /// 订阅定位更新
+  /// 返回 unsubscribe 函数
+  VoidCallback subscribe(LocationCallback callback) {
+    _subscribers.add(callback);
+    _isSubscribed = _subscribers.isNotEmpty;
+    
+    // 返回取消订阅的函数
+    return () {
+      _subscribers.remove(callback);
+      _isSubscribed = _subscribers.isNotEmpty;
+    };
+  }
+
+  /// 向所有订阅者广播事件
+  void _broadcast(LocationEvent event) {
+    if (!_isSubscribed) return;
+    
+    for (final callback in _subscribers) {
+      try {
+        callback(event);
+      } catch (e) {
+        print('[BackgroundLocationService] 广播异常: $e');
+      }
+    }
+  }
+
+  // ========== 服务控制 ==========
+  /// 启动服务（前台通知栏保活）
   Future<bool> start() async {
     try {
       // 检查权限
       final hasPermission = await _checkPermission();
       if (!hasPermission) {
         print('[BackgroundLocationService] start: 权限检查失败');
+        _broadcast(LocationEvent.error('定位权限被拒绝'));
         return false;
       }
 
       // Android 13+ 需要通知权限
       if (Platform.isAndroid) {
         final notifStatus = await Permission.notification.status;
-        print('[BackgroundLocationService] 通知权限状态: $notifStatus');
         if (notifStatus.isDenied) {
-          print('[BackgroundLocationService] 请求通知权限...');
           final result = await Permission.notification.request();
-          print('[BackgroundLocationService] 通知权限请求结果: $result');
+          if (!result.isGranted) {
+            print('[BackgroundLocationService] 通知权限被拒绝');
+          }
         }
       }
 
       // 确认最新设置值
       await _settingsService.load();
-      final interval = _settingsService.settings.intervalSeconds;
-      final powerSaving = _settingsService.settings.powerSaving;
+      _intervalSeconds = _settingsService.settings.intervalSeconds;
+      _powerSaving = _settingsService.settings.powerSaving;
 
-      print('[BackgroundLocationService] start: interval=${interval}s, powerSaving=$powerSaving');
-
-      // 启动原生前台服务（带配置）
+      // 启动原生前台服务（只保活）
       await _channel.invokeMethod('start', {
-        'interval': interval,
-        'powerSaving': powerSaving,
+        'interval': _intervalSeconds,
+        'powerSaving': _powerSaving,
       });
 
-      print('[BackgroundLocationService] start: invokeMethod(start) 完成');
+      // 更新设置状态
+      await _settingsService.update(enabled: true);
+
+      // 启动 Dart 层的定位循环
+      _startLocationLoop();
+
+      // 立即触发一次定位（不等定时器）
+      _fetchAndBroadcastLocation();
+
+      _broadcast(LocationEvent.serviceStart());
+      
+      print('[BackgroundLocationService] 服务启动成功');
       return true;
     } catch (e) {
       print('[BackgroundLocationService] start 异常: $e');
+      _broadcast(LocationEvent.error(e.toString()));
       return false;
     }
   }
@@ -69,14 +125,112 @@ class BackgroundLocationService {
   /// 停止服务
   Future<void> stop() async {
     try {
+      _stopLocationLoop();
+      
       await _settingsService.update(enabled: false);
       await _channel.invokeMethod('stop');
+      
+      _broadcast(LocationEvent.serviceStop());
+      
+      print('[BackgroundLocationService] 服务已停止');
     } catch (e) {
       print('[BackgroundLocationService] stop 异常: $e');
     }
   }
 
-  /// 检查权限
+  /// 更新配置（热更新）
+  Future<void> updateSettings({
+    int? intervalSeconds,
+    bool? powerSaving,
+  }) async {
+    await _settingsService.update(
+      intervalSeconds: intervalSeconds,
+      powerSaving: powerSaving,
+    );
+
+    _intervalSeconds = _settingsService.settings.intervalSeconds;
+    _powerSaving = _settingsService.settings.powerSaving;
+
+    // 如果正在追踪，重启定位循环
+    if (_isTracking) {
+      _stopLocationLoop();
+      _startLocationLoop();
+    }
+
+    // 通知原生服务更新配置
+    try {
+      await _channel.invokeMethod('updateConfig', {
+        'interval': _intervalSeconds,
+        'powerSaving': _powerSaving,
+      });
+    } catch (e) {
+      print('[BackgroundLocationService] updateConfig 异常: $e');
+    }
+  }
+
+  /// 是否正在运行
+  Future<bool> checkRunning() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('isRunning');
+      return result ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ========== 定位循环 ==========
+  void _startLocationLoop() {
+    if (_isTracking) return;
+    
+    _isTracking = true;
+    _scheduleNextLocation();
+  }
+
+  void _stopLocationLoop() {
+    _isTracking = false;
+    _locationTimer?.cancel();
+    _locationTimer = null;
+  }
+
+  void _scheduleNextLocation() {
+    if (!_isTracking) return;
+    
+    _locationTimer?.cancel();
+    
+    // 计算实际间隔（省电模式用更长间隔，最小30秒）
+    int actualInterval = _powerSaving ? Math.max(_intervalSeconds, 60) : _intervalSeconds;
+    
+    _locationTimer = Timer(Duration(seconds: actualInterval), () async {
+      if (!_isTracking) return;
+      
+      await _fetchAndBroadcastLocation();
+      _scheduleNextLocation(); // 继续下一次
+    });
+  }
+
+  Future<void> _fetchAndBroadcastLocation() async {
+    final position = await getCurrentPosition();
+    if (position != null) {
+      print('[BackgroundLocationService] 定位成功: lat=${position.latitude}, lng=${position.longitude}, acc=${position.accuracy}m');
+      _broadcast(LocationEvent.position(position));
+      
+      // 同时保存到本地
+      await _saveToLocal(position);
+    } else {
+      print('[BackgroundLocationService] 定位失败，未获取到有效位置');
+    }
+  }
+
+  /// 保存位置到本地（通过 TrackRecorder）
+  Future<void> _saveToLocal(Position position) async {
+    try {
+      await TrackRecorder().record(position);
+    } catch (e) {
+      print('[BackgroundLocationService] 保存位置失败: $e');
+    }
+  }
+
+  // ========== 权限检查 ==========
   Future<bool> _checkPermission() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -97,40 +251,32 @@ class BackgroundLocationService {
     }
   }
 
+  // ========== 单次定位（GPS → 网络 fallback）==========
   /// 获取当前位置（WGS84转GCJ-02用于高德地图显示）
-  /// 实现了 GPS → 网络定位 的 fallback 策略
   Future<Position?> getCurrentPosition() async {
-    String timeStr(DateTime t) => '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}:${t.second.toString().padLeft(2,'0')}.${t.millisecond.toString().padLeft(3,'0')}';
-    
+    String timeStr(DateTime t) =>
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}.${t.millisecond.toString().padLeft(3, '0')}';
+
     try {
       final hasPermission = await _checkPermission();
       if (!hasPermission) {
-        print('[BackgroundLocationService] GPS permission denied, time=${timeStr(DateTime.now())}');
+        print('[BackgroundLocationService] GPS permission denied');
         return null;
       }
 
-      // ========== 策略1: 优先 GPS ==========
-      final reqStart = DateTime.now();
-      print('[BackgroundLocationService] GPS request START, time=${timeStr(reqStart)}');
-      
+      // 策略1: 优先 GPS
       Position? position = await _getGpsPosition(timeStr);
-      
       if (position != null && position.accuracy < 100) {
-        // GPS 定位成功且精度 < 100米
-        print('[BackgroundLocationService] GPS 定位成功, time=${timeStr(DateTime.now())}, acc=${position.accuracy}m');
         return _convertToGcj02(position);
       }
 
-      // ========== 策略2: GPS 失败或精度差 → 网络定位 ==========
+      // 策略2: GPS 失败或精度差 → 网络定位
       print('[BackgroundLocationService] GPS 定位失败或精度差，尝试网络定位...');
       position = await _getNetworkPosition(timeStr);
-      
       if (position != null) {
-        print('[BackgroundLocationService] 网络定位成功, time=${timeStr(DateTime.now())}, acc=${position.accuracy}m');
         return _convertToGcj02(position);
       }
 
-      // ========== 策略3: 全部失败 ==========
       print('[BackgroundLocationService] 所有定位方式均失败');
       return null;
     } catch (e) {
@@ -139,45 +285,32 @@ class BackgroundLocationService {
     }
   }
 
-  /// 获取 GPS 定位
   Future<Position?> _getGpsPosition(String Function(DateTime) timeStr) async {
     try {
-      final reqStart = DateTime.now();
-      print('[BackgroundLocationService] GPS START, time=${timeStr(reqStart)}');
-      
+      print('[BackgroundLocationService] 尝试 GPS 定位...');
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.best,
-        timeLimit: const Duration(seconds: 15),  // 15秒超时
+        timeLimit: const Duration(seconds: 15),
       );
-      
-      final diff = DateTime.now().difference(reqStart);
-      print('[BackgroundLocationService] GPS result, time=${timeStr(DateTime.now())}, diff=${diff.inMilliseconds}ms, acc=${position.accuracy}m');
-      
+      print('[BackgroundLocationService] GPS 定位成功: acc=${position.accuracy}m');
       return position;
     } catch (e) {
-      print('[BackgroundLocationService] GPS 异常: $e');
+      print('[BackgroundLocationService] GPS 定位失败: $e');
       return null;
     }
   }
 
-  /// 获取网络定位（Wi-Fi/基站）
   Future<Position?> _getNetworkPosition(String Function(DateTime) timeStr) async {
     try {
-      final reqStart = DateTime.now();
-      print('[BackgroundLocationService] Network START, time=${timeStr(reqStart)}');
-      
-      // 使用低功耗模式请求网络定位
+      print('[BackgroundLocationService] 尝试网络定位...');
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 10),  // 网络定位通常更快
+        timeLimit: const Duration(seconds: 10),
       );
-      
-      final diff = DateTime.now().difference(reqStart);
-      print('[BackgroundLocationService] Network result, time=${timeStr(DateTime.now())}, diff=${diff.inMilliseconds}ms, acc=${position.accuracy}m');
-      
+      print('[BackgroundLocationService] 网络定位成功: acc=${position.accuracy}m');
       return position;
     } catch (e) {
-      print('[BackgroundLocationService] Network 异常: $e');
+      print('[BackgroundLocationService] 网络定位失败: $e');
       return null;
     }
   }
@@ -199,11 +332,11 @@ class BackgroundLocationService {
     );
   }
 
-  /// WGS84 坐标系转 GCJ-02 坐标系（用于中国境内高德/腾讯地图）
+  /// WGS84 坐标系转 GCJ-02 坐标系
   List<double> wgs84ToGcj02(double lat, double lon) {
     const double pi = 3.1415926535897932384626;
-    const double a = 6378245.0; // 地球长半轴
-    const double ee = 0.00669342162296594323; // 扁率
+    const double a = 6378245.0;
+    const double ee = 0.00669342162296594323;
 
     double dLat = _transformLat(lon - 105.0, lat - 35.0);
     double dLon = _transformLon(lon - 105.0, lat - 35.0);
@@ -242,46 +375,14 @@ class BackgroundLocationService {
     return ret;
   }
 
-  /// 更新设置（热更新）
-  Future<void> updateSettings({
-    int? intervalSeconds,
-    bool? powerSaving,
-  }) async {
-    await _settingsService.update(
-      intervalSeconds: intervalSeconds,
-      powerSaving: powerSaving,
-    );
-
-    // 通知原生服务更新配置
-    try {
-      await _channel.invokeMethod('updateConfig', {
-        'interval': _settingsService.settings.intervalSeconds,
-        'powerSaving': _settingsService.settings.powerSaving,
-      });
-    } catch (e) {
-      print('[BackgroundLocationService] updateConfig 异常: $e');
-    }
-  }
-
-  /// 是否正在运行
-  Future<bool> checkRunning() async {
-    try {
-      final result = await _channel.invokeMethod<bool>('isRunning');
-      return result ?? false;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /// 根据经纬度获取地址描述（逆地址解析）
-  /// 使用 Nominatim (OpenStreetMap) 免费服务
+  // ========== 逆地址解析 ==========
+  /// 根据经纬度获取地址描述
   Future<String?> getAddressFromLatLng(double lat, double lng) async {
     try {
-      // 使用 OpenStreetMap Nominatim API (免费，无需API Key)
       final url = Uri.parse(
         'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1',
       );
-      
+
       final response = await http.get(
         url,
         headers: {'User-Agent': 'TracePath/1.0'},
@@ -295,14 +396,13 @@ class BackgroundLocationService {
           final suburb = address['suburb'] ?? '';
           final city = address['city'] ?? address['town'] ?? address['village'] ?? '';
           final district = address['city_district'] ?? address['district'] ?? '';
-          
-          // 构建地址: 城市 + 区/县 + 街道
+
           String result = '';
           if (city.isNotEmpty) result += city;
           if (district.isNotEmpty && district != city) result += district;
           if (suburb.isNotEmpty && suburb != district && suburb != city) result += suburb;
           if (road.isNotEmpty) result += road;
-          
+
           return result.isEmpty ? null : result;
         }
       }
@@ -315,5 +415,6 @@ class BackgroundLocationService {
 
   Future<void> dispose() async {
     await stop();
+    _subscribers.clear();
   }
 }

@@ -1,96 +1,10 @@
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:flutter/services.dart';
-import 'package:csv/csv.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:path_provider/path_provider.dart';
+import 'track_recorder.dart';
 
-/// 轨迹数据点
-class TrackPoint {
-  final DateTime timestamp;
-  final double lat;
-  final double lng;
-  final double altitude;
-  final double speed;
-  final double accuracy;
-
-  TrackPoint({
-    required this.timestamp,
-    required this.lat,
-    required this.lng,
-    required this.altitude,
-    required this.speed,
-    required this.accuracy,
-  });
-
-  factory TrackPoint.fromRow(List<dynamic> row) {
-    return TrackPoint(
-      timestamp: DateTime.parse(row[0].toString()),
-      lat: double.parse(row[1].toString()),
-      lng: double.parse(row[2].toString()),
-      altitude: double.parse(row[3].toString()),
-      speed: double.parse(row[4].toString()),
-      accuracy: double.parse(row[5].toString()),
-    );
-  }
-
-  LatLng toLatLng() => LatLng(lat, lng);
-
-  /// 创建转换后的轨迹点（WGS84 → GCJ-02）
-  TrackPoint toGcj02() {
-    final gcj02 = wgs84ToGcj02(lat, lng);
-    return TrackPoint(
-      timestamp: timestamp,
-      lat: gcj02[0],
-      lng: gcj02[1],
-      altitude: altitude,
-      speed: speed,
-      accuracy: accuracy,
-    );
-  }
-
-  /// WGS84 转 GCJ-02
-  static List<double> wgs84ToGcj02(double lat, double lng) {
-    const double pi = 3.1415926535897932384626;
-    const double a = 6378245.0;
-    const double ee = 0.00669342162296594323;
-
-    double dLat = _transformLat(lng - 105.0, lat - 35.0);
-    double dLng = _transformLng(lng - 105.0, lat - 35.0);
-
-    double radLat = lat / 180.0 * pi;
-    double sinLat = math.sin(radLat);
-    double cosLat = math.cos(radLat);
-    double magic = 1 - ee * sinLat * sinLat;
-    double sqrtMagic = math.sqrt(magic);
-
-    dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * pi);
-    dLng = (dLng * 180.0) / (a / sqrtMagic * cosLat * pi);
-
-    return [lat + dLat, lng + dLng];
-  }
-
-  static double _transformLat(double x, double y) {
-    const double pi = 3.1415926535897932384626;
-    double ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y;
-    double sqrtX = x >= 0 ? x : -x;
-    ret += 0.2 * math.sqrt(sqrtX);
-    ret += (20.0 * math.sin(6.0 * x * pi) + 20.0 * math.sin(2.0 * x * pi)) * 2.0 / 3.0;
-    ret += (20.0 * math.sin(y * pi) + 40.0 * math.sin(y / 3.0 * pi)) * 2.0 / 3.0;
-    ret += (160.0 * math.sin(y / 12.0 * pi) + 320.0 * math.sin(y * pi / 30.0)) * 2.0 / 3.0;
-    return ret;
-  }
-
-  static double _transformLng(double x, double y) {
-    const double pi = 3.1415926535897932384626;
-    double ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y;
-    double sqrtX = x >= 0 ? x : -x;
-    ret += 0.1 * math.sqrt(sqrtX);
-    ret += (20.0 * math.sin(6.0 * x * pi) + 20.0 * math.sin(2.0 * x * pi)) * 2.0 / 3.0;
-    ret += (20.0 * math.sin(x * pi) + 40.0 * math.sin(x / 3.0 * pi)) * 2.0 / 3.0;
-    ret += (150.0 * math.sin(x / 12.0 * pi) + 300.0 * math.sin(x / 30.0 * pi)) * 2.0 / 3.0;
-    return ret;
-  }
-}
+// 导出 TrackPoint，保持向后兼容
+export 'track_recorder.dart' show TrackPoint;
 
 /// 轨迹服务
 class TrackService {
@@ -100,22 +14,17 @@ class TrackService {
 
   static const String _folderName = 'location_tracks';
 
-  /// 获取轨迹根目录（使用Android的files目录，与原生代码一致）
+  /// 获取轨迹根目录（使用与TrackRecorder相同的路径）
   Future<String> get _tracksRootDir async {
     try {
-      // 通过MethodChannel获取Android的files目录路径
-      final result = await const MethodChannel('com.kenny.trace_path/location_service')
-          .invokeMethod<String>('getFilesDir');
-      if (result != null) {
-        return '$result/$_folderName';
-      }
+      final dir = await getApplicationDocumentsDirectory();
+      final path = '${dir.path}/$_folderName';
+      print('[TrackService] _tracksRootDir: $path');
+      return path;
     } catch (e) {
-      print('[TrackService] 获取files目录失败: $e');
+      print('[TrackService] 获取目录失败: $e');
+      return '';
     }
-    // fallback到应用文档目录
-    final dir = await const MethodChannel('com.kenny.trace_path/location_service')
-        .invokeMethod<String>('getFilesDir');
-    return dir ?? '';
   }
 
   /// 获取指定手机号的轨迹目录
@@ -225,8 +134,8 @@ class TrackService {
         try {
           points.add(TrackPoint(
             timestamp: DateTime.parse(parts[0].trim()),
-            lat: double.parse(parts[1].trim()),
-            lng: double.parse(parts[2].trim()),
+            latitude: double.parse(parts[1].trim()),
+            longitude: double.parse(parts[2].trim()),
             altitude: double.parse(parts[3].trim()),
             speed: double.parse(parts[4].trim()),
             accuracy: double.parse(parts[5].trim()),

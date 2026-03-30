@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:trace_path/constants/colors.dart';
 import '../../../services/track_service.dart';
 import '../../../services/friend_service.dart';
+import '../../../services/background_location_service.dart';
+import '../../../models/location_event.dart';
 import 'track_map_page.dart';
 
 class TrackPage extends StatefulWidget {
@@ -14,6 +16,7 @@ class TrackPage extends StatefulWidget {
 class _TrackPageState extends State<TrackPage> {
   final TrackService _trackService = TrackService();
   final FriendService _friendService = FriendService();
+  final BackgroundLocationService _locationService = BackgroundLocationService();
 
   // 当前展开的层级
   String? _expandedPhone;
@@ -23,10 +26,33 @@ class _TrackPageState extends State<TrackPage> {
   bool _isLoading = true;
   Map<String, Map<String, Map<String, List<String>>>> _hierarchy = {};
 
+  // 定位订阅
+  VoidCallback? _locationUnsubscribe;
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    // 订阅位置更新，收到后刷新轨迹列表
+    _locationUnsubscribe = _locationService.subscribe(_onLocationEvent);
+  }
+
+  @override
+  void dispose() {
+    _locationUnsubscribe?.call();
+    super.dispose();
+  }
+
+  /// 处理位置更新事件
+  void _onLocationEvent(LocationEvent event) {
+    if (event.type == LocationEventType.locationUpdate) {
+      // 有新位置时，延迟刷新轨迹列表（避免频繁刷新）
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _loadData();
+        }
+      });
+    }
   }
 
   Future<void> _loadData() async {
@@ -36,12 +62,13 @@ class _TrackPageState extends State<TrackPage> {
       setState(() {
         _hierarchy = hierarchy;
         _isLoading = false;
-        // 默认展开第一个人员的列表（18511698488优先）
+        // 默认展开第一个人员的列表（当前用户优先）
         if (hierarchy.isNotEmpty && _expandedPhone == null) {
+          final selfPhone = _friendService.getSelfPhone();
           final phones = hierarchy.keys.toList();
           phones.sort((a, b) {
-            if (a == '18511698488') return -1;
-            if (b == '18511698488') return 1;
+            if (a == selfPhone) return -1;
+            if (b == selfPhone) return 1;
             return a.compareTo(b);
           });
           _expandedPhone = phones.first;
@@ -128,10 +155,11 @@ class _TrackPageState extends State<TrackPage> {
     final widgets = <Widget>[];
 
     // 按手机号排序（好友优先，自己的号码在前）
+    final selfPhone = _friendService.getSelfPhone();
     final sortedPhones = _hierarchy.keys.toList()
       ..sort((a, b) {
-        if (a == '18511698488') return -1;
-        if (b == '18511698488') return 1;
+        if (a == selfPhone) return -1;
+        if (b == selfPhone) return 1;
         return a.compareTo(b);
       });
 
