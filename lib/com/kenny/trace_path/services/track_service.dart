@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'track_recorder.dart';
+import 'track_storage_manager.dart';
 
 // 导出 TrackPoint，保持向后兼容
 export 'track_recorder.dart' show TrackPoint;
@@ -12,36 +13,22 @@ class TrackService {
   factory TrackService() => _instance;
   TrackService._();
 
-  static const String _folderName = 'location_tracks';
-
-  /// 获取轨迹根目录（使用与TrackRecorder相同的路径）
-  Future<String> get _tracksRootDir async {
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final path = '${dir.path}/$_folderName';
-      print('[TrackService] _tracksRootDir: $path');
-      return path;
-    } catch (e) {
-      print('[TrackService] 获取目录失败: $e');
-      return '';
-    }
-  }
+  /// 获取存储管理器
+  TrackStorageManager get _manager => TrackStorageManager();
 
   /// 获取指定手机号的轨迹目录
-  Future<String> _phoneDir(String phoneNumber) async {
-    final root = await _tracksRootDir;
-    return '$root/$phoneNumber';
+  String _phoneDir(String phoneNumber) {
+    return _manager.userDir(phoneNumber);
   }
 
   /// 删除指定日期的轨迹文件
   Future<bool> deleteDayTrack(String phoneNumber, int year, int month, int day) async {
     try {
-      final path = await _phoneDir(phoneNumber);
-      final datePath = '$year/${month.toString().padLeft(2, '0')}/${day.toString().padLeft(2, '0')}.csv';
-      final file = File('$path/$datePath');
+      final filePath = _manager.dayFilePathByYMD(phoneNumber, year, month, day);
+      final file = File(filePath);
       if (await file.exists()) {
         await file.delete();
-        print('[TrackService] 已删除: $path/$datePath');
+        print('[TrackService] 已删除: $filePath');
         return true;
       }
       return false;
@@ -62,15 +49,14 @@ class TrackService {
   }) async {
     try {
       final now = DateTime.now();
-      final path = await _phoneDir(phoneNumber);
-      final dir = Directory(path);
+      final filePath = _manager.dayFilePath(phoneNumber, now);
+      final file = File(filePath);
+
+      // 确保目录存在
+      final dir = file.parent;
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }
-
-      // 路径格式: {phoneNumber}/{year}/{month}/{day}.csv
-      final datePath = '${now.year}/${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')}.csv';
-      final file = File('$path/$datePath');
 
       // 检查是否需要添加表头（文件不存在或为空）
       bool needsHeader = !await file.exists() || await file.length() == 0;
@@ -98,9 +84,7 @@ class TrackService {
   /// 读取指定日期的轨迹数据
   Future<List<TrackPoint>> readDayTrack(String phoneNumber, int year, int month, int day) async {
     try {
-      final path = await _phoneDir(phoneNumber);
-      final datePath = '$year/${month.toString().padLeft(2, '0')}/${day.toString().padLeft(2, '0')}.csv';
-      final fullPath = '$path/$datePath';
+      final fullPath = _manager.dayFilePathByYMD(phoneNumber, year, month, day);
       print('[TrackService] 读取轨迹: $fullPath');
       
       final file = File(fullPath);
@@ -162,7 +146,7 @@ class TrackService {
     final hierarchy = <String, Map<String, Map<String, List<String>>>>{};
 
     try {
-      final root = await _tracksRootDir;
+      final root = TrackStorageManager().rootPath;
       final rootDir = Directory(root);
       if (!await rootDir.exists()) return hierarchy;
 
@@ -217,9 +201,8 @@ class TrackService {
   /// 获取指定日期轨迹文件的修改时间
   Future<DateTime?> getFileModifyTime(String phoneNumber, int year, int month, int day) async {
     try {
-      final path = await _phoneDir(phoneNumber);
-      final datePath = '$year/${month.toString().padLeft(2, '0')}/${day.toString().padLeft(2, '0')}.csv';
-      final file = File('$path/$datePath');
+      final filePath = _manager.dayFilePathByYMD(phoneNumber, year, month, day);
+      final file = File(filePath);
       if (await file.exists()) {
         final stat = await file.stat();
         return stat.modified;

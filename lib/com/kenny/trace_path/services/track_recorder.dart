@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'user_service.dart';
+import 'track_storage_manager.dart';
 
 /// 轨迹点数据
 class TrackPoint {
@@ -138,14 +139,15 @@ class LocalCsvStorage implements TrackStorage {
 
   LocalCsvStorage();
 
+  /// 获取存储管理器
+  TrackStorageManager get _manager => TrackStorageManager();
+
   @override
   Future<void> write(String phoneNumber, TrackPoint point) async {
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final trackPath = '${dir.path}/location_tracks/$phoneNumber';
-      print('[TrackRecorder] 写入路径: $trackPath');
+      final dirPath = _manager.userDir(phoneNumber);
       final trackDir = Directory(
-        '$trackPath/'
+        '$dirPath/'
         '${point.timestamp.year}/'
         '${_padZero(point.timestamp.month)}',
       );
@@ -218,9 +220,7 @@ class LocalCsvStorage implements TrackStorage {
 
   @override
   Future<String> getTrackFilePath(String phoneNumber, int year, int month, int day) async {
-    final dir = await getApplicationDocumentsDirectory();
-    return '${dir.path}/location_tracks/$phoneNumber/'
-        '$year/${_padZero(month)}/${_padZero(day)}.csv';
+    return _manager.dayFilePathByYMD(phoneNumber, year, month, day);
   }
 
   @override
