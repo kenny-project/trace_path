@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import '../models/location_event.dart';
+import 'error_logger_service.dart';
 import 'location_settings_service.dart';
 import 'track_recorder.dart';
 import 'user_service.dart';
@@ -26,6 +27,7 @@ class BackgroundLocationService {
 
   final LocationSettingsService _settingsService = LocationSettingsService();
   final UserService _userService = UserService();
+  final ErrorLoggerService _errorLogger = ErrorLoggerService();
 
   // ========== 订阅者管理 ==========
   final List<LocationCallback> _subscribers = [];
@@ -36,10 +38,15 @@ class BackgroundLocationService {
   bool _isTracking = false;
   int _intervalSeconds = 30;
   bool _powerSaving = false;
+  int _successCount = 0; // 成功计数，用于每10次记录一次日志
+  bool _hasFirstLocation = false; // 是否已有首次定位
+  bool _isManualRefresh = false; // 是否是手动刷新
 
   // ========== 初始化 ==========
   Future<void> init() async {
     await _settingsService.load();
+    await _errorLogger.init();
+    await _errorLogger.logService(action: 'INIT');
   }
 
   /// 订阅定位更新
@@ -76,6 +83,7 @@ class BackgroundLocationService {
       final hasPermission = await _checkPermission();
       if (!hasPermission) {
         print('[BackgroundLocationService] start: 权限检查失败');
+        await _errorLogger.logPermission(permission: 'LOCATION', reason: 'PERMISSION_DENIED');
         _broadcast(LocationEvent.error('定位权限被拒绝'));
         return false;
       }
@@ -87,6 +95,7 @@ class BackgroundLocationService {
           final result = await Permission.notification.request();
           if (!result.isGranted) {
             print('[BackgroundLocationService] 通知权限被拒绝');
+            await _errorLogger.logPermission(permission: 'NOTIFICATION', reason: 'PERMISSION_DENIED');
           }
         }
       }
@@ -114,6 +123,7 @@ class BackgroundLocationService {
       _broadcast(LocationEvent.serviceStart());
       
       print('[BackgroundLocationService] 服务启动成功');
+      await _errorLogger.logService(action: 'START_SUCCESS');
       return true;
     } catch (e) {
       print('[BackgroundLocationService] start 异常: $e');
@@ -133,8 +143,10 @@ class BackgroundLocationService {
       _broadcast(LocationEvent.serviceStop());
       
       print('[BackgroundLocationService] 服务已停止');
+      await _errorLogger.logService(action: 'STOP_SUCCESS');
     } catch (e) {
       print('[BackgroundLocationService] stop 异常: $e');
+      await _errorLogger.logService(action: 'STOP_FAILED', extra: 'error=$e');
     }
   }
 
@@ -209,16 +221,47 @@ class BackgroundLocationService {
   }
 
   Future<void> _fetchAndBroadcastLocation() async {
+    // 记录定位请求
+    await _errorLogger.logService(
+      action: _isManualRefresh ? 'MANUAL_REFRESH_REQUEST' : 'AUTO_LOCATION_REQUEST',
+    );
+    
     final position = await getCurrentPosition();
     if (position != null) {
+      _successCount++;
+      
       print('[BackgroundLocationService] 定位成功: lat=${position.latitude}, lng=${position.longitude}, acc=${position.accuracy}m');
       _broadcast(LocationEvent.position(position));
+      
+      // 首次定位记录
+      if (!_hasFirstLocation) {
+        _hasFirstLocation = true;
+        await _errorLogger.logFirstLocation(
+          lat: position.latitude,
+          lng: position.longitude,
+          accuracy: position.accuracy,
+        );
+      }
+      
+      // 每10次成功记录一次
+      if (_successCount % 10 == 0) {
+        await _errorLogger.logGpsSuccess(
+          lat: position.latitude,
+          lng: position.longitude,
+          accuracy: position.accuracy,
+          successCount: _successCount,
+        );
+      }
       
       // 同时保存到本地
       await _saveToLocal(position);
     } else {
       print('[BackgroundLocationService] 定位失败，未获取到有效位置');
+      await _errorLogger.logGpsFail(reason: 'NO_POSITION_RETURNED');
     }
+    
+    // 重置手动刷新标志
+    _isManualRefresh = false;
   }
 
   /// 保存位置到本地（通过 TrackRecorder）
@@ -258,9 +301,18 @@ class BackgroundLocationService {
         '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}.${t.millisecond.toString().padLeft(3, '0')}';
 
     try {
+      // 检查定位服务是否开启
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        print('[BackgroundLocationService] 定位服务未开启');
+        await _errorLogger.logGpsFail(reason: 'LOCATION_SERVICE_DISABLED');
+        return null;
+      }
+
       final hasPermission = await _checkPermission();
       if (!hasPermission) {
         print('[BackgroundLocationService] GPS permission denied');
+        await _errorLogger.logPermission(permission: 'LOCATION', reason: 'PERMISSION_DENIED');
         return null;
       }
 
@@ -278,9 +330,11 @@ class BackgroundLocationService {
       }
 
       print('[BackgroundLocationService] 所有定位方式均失败');
+      await _errorLogger.logGpsFail(reason: 'ALL_METHODS_FAILED');
       return null;
     } catch (e) {
       print('[BackgroundLocationService] getCurrentPosition 异常: $e');
+      await _errorLogger.logGpsFail(reason: 'EXCEPTION', extra: e.toString());
       return null;
     }
   }
@@ -295,7 +349,18 @@ class BackgroundLocationService {
       print('[BackgroundLocationService] GPS 定位成功: acc=${position.accuracy}m');
       return position;
     } catch (e) {
-      print('[BackgroundLocationService] GPS 定位失败: $e');
+      String reason = 'GPS_TIMEOUT';
+      if (e.toString().contains('PERMISSION_DENIED')) {
+        reason = 'GPS_PERMISSION_DENIED';
+      } else if (e.toString().contains('LOCATION_SERVICE_DISABLED')) {
+        reason = 'GPS_SERVICE_DISABLED';
+      } else if (e.toString().contains('timeout')) {
+        reason = 'GPS_TIMEOUT';
+      } else {
+        reason = 'GPS_UNKNOWN';
+      }
+      print('[BackgroundLocationService] GPS 定位失败: $e, reason=$reason');
+      await _errorLogger.logGpsFail(reason: reason, accuracy: null, timeout: 15);
       return null;
     }
   }
@@ -310,7 +375,18 @@ class BackgroundLocationService {
       print('[BackgroundLocationService] 网络定位成功: acc=${position.accuracy}m');
       return position;
     } catch (e) {
-      print('[BackgroundLocationService] 网络定位失败: $e');
+      String reason = 'NETWORK_TIMEOUT';
+      if (e.toString().contains('PERMISSION_DENIED')) {
+        reason = 'NETWORK_PERMISSION_DENIED';
+      } else if (e.toString().contains('NETWORK')) {
+        reason = 'NETWORK_UNAVAILABLE';
+      } else if (e.toString().contains('timeout')) {
+        reason = 'NETWORK_TIMEOUT';
+      } else {
+        reason = 'NETWORK_UNKNOWN';
+      }
+      print('[BackgroundLocationService] 网络定位失败: $e, reason=$reason');
+      await _errorLogger.logNetworkFail(reason: reason, timeout: 10, extra: e.toString());
       return null;
     }
   }
