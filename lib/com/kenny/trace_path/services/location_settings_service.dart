@@ -7,9 +7,14 @@ import 'package:path_provider/path_provider.dart';
 class LocationSettingsService {
   static const String _fileName = 'location_settings.json';
 
-  TracePathLocationSettings _settings = TracePathLocationSettings.defaults();
+  /// 存储的设置（子类可直接访问以支持测试注入）
+  // ignore: unused_field
+  TracePathLocationSettings settingsField = TracePathLocationSettings.defaults();
 
-  TracePathLocationSettings get settings => _settings;
+  TracePathLocationSettings get settings => settingsField;
+
+  /// 测试用：设置注入
+  void injectSettings(TracePathLocationSettings v) { settingsField = v; }
 
   Future<void> load() async {
     try {
@@ -19,7 +24,7 @@ class LocationSettingsService {
 
       final content = await file.readAsString();
       final json = jsonDecode(content) as Map<String, dynamic>;
-      _settings = TracePathLocationSettings.fromJson(json);
+      settingsField = TracePathLocationSettings.fromJson(json);
     } catch (e) {
       print('[LocationSettingsService] 加载失败: $e');
     }
@@ -29,7 +34,7 @@ class LocationSettingsService {
     try {
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/$_fileName');
-      await file.writeAsString(jsonEncode(_settings.toJson()));
+      await file.writeAsString(jsonEncode(settingsField.toJson()));
     } catch (e) {
       print('[LocationSettingsService] 保存失败: $e');
     }
@@ -40,9 +45,9 @@ class LocationSettingsService {
     int? intervalSeconds,
     bool? powerSaving,
   }) async {
-    if (enabled != null) _settings.enabled = enabled;
-    if (intervalSeconds != null) _settings.intervalSeconds = intervalSeconds;
-    if (powerSaving != null) _settings.powerSaving = powerSaving;
+    if (enabled != null) settingsField.enabled = enabled;
+    if (intervalSeconds != null) settingsField.intervalSeconds = intervalSeconds;
+    if (powerSaving != null) settingsField.powerSaving = powerSaving;
     await save();
   }
 }

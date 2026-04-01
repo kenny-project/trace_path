@@ -60,4 +60,15 @@ class FileBasedFriendStorage implements FriendStorage {
       print('[FileBasedFriendStorage] 保存失败: $e');
     }
   }
+
+  @override
+  Future<void> clear() async {
+    try {
+      if (await _file.exists()) {
+        await _file.delete();
+      }
+    } catch (e) {
+      print('[FileBasedFriendStorage] 清除失败: $e');
+    }
+  }
 }

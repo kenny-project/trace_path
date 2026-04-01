@@ -32,25 +32,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.paused:
-        _errorLogger.log(ErrorTag.app, 'action=PAUSED');
-        break;
-      case AppLifecycleState.resumed:
-        _errorLogger.log(ErrorTag.app, 'action=RESUMED');
-        break;
-      case AppLifecycleState.inactive:
-        _errorLogger.log(ErrorTag.app, 'action=INACTIVE');
-        break;
-      case AppLifecycleState.detached:
-        _errorLogger.log(ErrorTag.app, 'action=DETACHED');
-        break;
-      case AppLifecycleState.hidden:
-        _errorLogger.log(ErrorTag.app, 'action=HIDDEN');
-        break;
-    }
-  }
+  void didChangeAppLifecycleState(AppLifecycleState state) {}
 
   @override
   Widget build(BuildContext context) {

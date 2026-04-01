@@ -23,6 +23,12 @@ class TrackStorageManager {
     return _rootPath!;
   }
 
+  /// 设置路径（仅用于测试）
+  void set testRootPath(String path) {
+    _rootPath = path;
+    _initialized = true;
+  }
+
   /// 初始化（应在 App 启动时调用一次）
   Future<void> init() async {
     if (_initialized) return;

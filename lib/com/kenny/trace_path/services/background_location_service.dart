@@ -35,12 +35,20 @@ class BackgroundLocationService {
 
   // ========== 定位状态 ==========
   Timer? _locationTimer;
+  Timer? _gpsRetryTimer; // GPS失败重试定时器
   bool _isTracking = false;
   int _intervalSeconds = 30;
   bool _powerSaving = false;
   int _successCount = 0; // 成功计数，用于每10次记录一次日志
+  int _gpsRetryCount = 0; // GPS重试次数
+  bool _gpsRetryInProgress = false; // 是否正在进行GPS重试
   bool _hasFirstLocation = false; // 是否已有首次定位
   bool _isManualRefresh = false; // 是否是手动刷新
+
+  // GPS重试参数：最大5次，指数退避最大5分钟
+  static const int _maxGpsRetryCount = 5;
+  static const int _baseGpsRetryDelaySec = 15;
+  static const int _maxGpsRetryDelaySec = 300;
 
   // ========== 初始化 ==========
   Future<void> init() async {
@@ -202,6 +210,10 @@ class BackgroundLocationService {
     _isTracking = false;
     _locationTimer?.cancel();
     _locationTimer = null;
+    _gpsRetryTimer?.cancel();
+    _gpsRetryTimer = null;
+    _gpsRetryCount = 0;
+    _gpsRetryInProgress = false;
   }
 
   void _scheduleNextLocation() {
@@ -209,21 +221,85 @@ class BackgroundLocationService {
     
     _locationTimer?.cancel();
     
+    // 如果GPS重试正在进行中，跳过本次定时调度，等重试处理
+    if (_gpsRetryInProgress) {
+      print('[BackgroundLocationService] GPS重试进行中，跳过本次定时调度');
+      return;
+    }
+    
     // 计算实际间隔（省电模式用更长间隔，最小30秒）
     int actualInterval = _powerSaving ? Math.max(_intervalSeconds, 60) : _intervalSeconds;
+    print('[BackgroundLocationService] 🔄 调度下次定位，_intervalSeconds=${_intervalSeconds}s, actualInterval=${actualInterval}s, _powerSaving=${_powerSaving}');
     
     _locationTimer = Timer(Duration(seconds: actualInterval), () async {
+      print('[BackgroundLocationService] ⏰ 定时器触发！isTracking=$_isTracking');
       if (!_isTracking) return;
       
-      await _fetchAndBroadcastLocation();
-      _scheduleNextLocation(); // 继续下一次
+      final success = await _fetchAndBroadcastLocation();
+      // 成功后继续调度；失败时由 _fetchAndBroadcastLocation 内部调度了GPS重试
+      if (success) {
+        _scheduleNextLocation();
+      }
     });
   }
 
-  Future<void> _fetchAndBroadcastLocation() async {
-    // 记录定位请求
+  /// GPS失败后调度指数退避重试
+  void _scheduleGpsRetry() {
+    // 最多重试 _maxGpsRetryCount 次
+    if (_gpsRetryCount >= _maxGpsRetryCount) {
+      print('[BackgroundLocationService] GPS重试次数已达上限(${_maxGpsRetryCount})，停止重试，等待下次定时触发');
+      _gpsRetryCount = 0;
+      _gpsRetryInProgress = false;
+      return;
+    }
+    
+    _gpsRetryInProgress = true;
+    
+    // 指数退避: 15s -> 30s -> 60s -> 120s -> 240s，上限5分钟
+    int delay = _baseGpsRetryDelaySec * (1 << _gpsRetryCount);
+    if (delay > _maxGpsRetryDelaySec) delay = _maxGpsRetryDelaySec;
+    
+    print('[BackgroundLocationService] 调度GPS重试(${_gpsRetryCount + 1}/$_maxGpsRetryCount)，${delay}s后');
+    
+    _gpsRetryTimer?.cancel();
+    _gpsRetryTimer = Timer(Duration(seconds: delay), () async {
+      if (!_isTracking) return;
+      
+      _gpsRetryCount++;
+      print('[BackgroundLocationService] GPS重试计时器触发，开始重试定位...');
+      
+      final position = await getCurrentPosition();
+      if (position != null) {
+        _gpsRetryCount = 0;
+        _gpsRetryInProgress = false;
+        
+        print('[BackgroundLocationService] GPS重试成功: lat=${position.latitude}, lng=${position.longitude}');
+        _broadcast(LocationEvent.position(position));
+        await _saveToLocal(position);
+        
+        // 重试成功后继续正常调度
+        _scheduleNextLocation();
+      } else {
+        print('[BackgroundLocationService] GPS重试仍然失败');
+        // 继续调度下一次重试
+        _scheduleGpsRetry();
+      }
+    });
+  }
+
+  Future<bool> _fetchAndBroadcastLocation() async {
+    print('[BackgroundLocationService] 📍 _fetchAndBroadcastLocation 开始');
+    // 记录定位请求及关键参数（方便排查问题）
+    final params = [
+      'interval=${_intervalSeconds}s',
+      'powerSaving=$_powerSaving',
+      'accuracy=best',
+      'gpsTimeout=15s',
+      'netTimeout=10s',
+    ];
     await _errorLogger.logService(
       action: _isManualRefresh ? 'MANUAL_REFRESH_REQUEST' : 'AUTO_LOCATION_REQUEST',
+      extra: params.join(' '),
     );
     
     final position = await getCurrentPosition();
@@ -255,13 +331,28 @@ class BackgroundLocationService {
       
       // 同时保存到本地
       await _saveToLocal(position);
+      
+      // 成功后重置GPS重试状态
+      _gpsRetryCount = 0;
+      _gpsRetryInProgress = false;
+      
+      // 重置手动刷新标志
+      _isManualRefresh = false;
+      print('[BackgroundLocationService] ✅ _fetchAndBroadcastLocation 结束（成功）');
+      return true;
     } else {
+      print('[BackgroundLocationService] ❌ _fetchAndBroadcastLocation 结束（失败）');
       print('[BackgroundLocationService] 定位失败，未获取到有效位置');
       await _errorLogger.logGpsFail(reason: 'NO_POSITION_RETURNED');
+      
+      // GPS失败时调度立即重试（不等定时器）
+      _scheduleGpsRetry();
+      
+      // 重置手动刷新标志
+      _isManualRefresh = false;
+      print('[BackgroundLocationService] ❌ _fetchAndBroadcastLocation 结束（失败-重试）');
+      return false;
     }
-    
-    // 重置手动刷新标志
-    _isManualRefresh = false;
   }
 
   /// 保存位置到本地（通过 TrackRecorder）
@@ -301,8 +392,24 @@ class BackgroundLocationService {
         '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}.${t.millisecond.toString().padLeft(3, '0')}';
 
     try {
-      // 检查定位服务是否开启
+      // === 请求开始：记录定位参数 ===
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      LocationPermission permission = await Geolocator.checkPermission();
+      final logParams = [
+        'serviceEnabled=$serviceEnabled',
+        'permission=$permission',
+        'interval=${_intervalSeconds}s',
+        'powerSaving=$_powerSaving',
+        'gpsAccuracy=best',
+        'gpsTimeout=15s',
+        'gpsAccThresh=50m',
+        'netAccuracy=medium',
+        'netTimeout=10s',
+        'netAccThresh=200m',
+      ];
+      print('[BackgroundLocationService] ========== 定位请求开始 ==========');
+      print('[BackgroundLocationService] 定位参数: ${logParams.join(', ')}');
+
       if (!serviceEnabled) {
         print('[BackgroundLocationService] 定位服务未开启');
         await _errorLogger.logGpsFail(reason: 'LOCATION_SERVICE_DISABLED');
@@ -316,25 +423,26 @@ class BackgroundLocationService {
         return null;
       }
 
-      // 策略1: 优先 GPS
+      // 策略1: 优先 GPS（精度阈值 50m：室外 GPS 良好时一般 3-30m，50m 可过滤掉信号差的结果）
       Position? position = await _getGpsPosition(timeStr);
-      if (position != null && position.accuracy < 100) {
-        return _convertToGcj02(position);
+      if (position != null && position.accuracy < 50) {
+        return position; // 返回原始 WGS84
       }
 
-      // 策略2: GPS 失败或精度差 → 网络定位
-      print('[BackgroundLocationService] GPS 定位失败或精度差，尝试网络定位...');
+      // 策略2: GPS 失败或精度差 → 网络定位（城市 Wi-Fi/基站 20-100m，乡村 100-500m，接受 <200m 的结果）
+      print('[BackgroundLocationService] GPS 定位失败或精度差（acc=${position?.accuracy ?? 'null'}m），尝试网络定位...');
       position = await _getNetworkPosition(timeStr);
-      if (position != null) {
-        return _convertToGcj02(position);
+      if (position != null && position.accuracy < 200) {
+        return position; // 返回原始 WGS84
       }
 
       print('[BackgroundLocationService] 所有定位方式均失败');
       await _errorLogger.logGpsFail(reason: 'ALL_METHODS_FAILED');
       return null;
-    } catch (e) {
-      print('[BackgroundLocationService] getCurrentPosition 异常: $e');
-      await _errorLogger.logGpsFail(reason: 'EXCEPTION', extra: e.toString());
+    } catch (e, st) {
+      print('[BackgroundLocationService] getCurrentPosition 异常: type=${e.runtimeType}, message=$e');
+      print('[BackgroundLocationService] getCurrentPosition stackTrace: $st');
+      await _errorLogger.logGpsFail(reason: 'EXCEPTION', extra: 'type=${e.runtimeType}, msg=$e\n$st');
       return null;
     }
   }
@@ -342,13 +450,14 @@ class BackgroundLocationService {
   Future<Position?> _getGpsPosition(String Function(DateTime) timeStr) async {
     try {
       print('[BackgroundLocationService] 尝试 GPS 定位...');
+      print('[BackgroundLocationService] GPS params: accuracy=best, timeLimit=15s');
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.best,
         timeLimit: const Duration(seconds: 15),
       );
       print('[BackgroundLocationService] GPS 定位成功: acc=${position.accuracy}m');
       return position;
-    } catch (e) {
+    } catch (e, st) {
       String reason = 'GPS_TIMEOUT';
       if (e.toString().contains('PERMISSION_DENIED')) {
         reason = 'GPS_PERMISSION_DENIED';
@@ -359,8 +468,11 @@ class BackgroundLocationService {
       } else {
         reason = 'GPS_UNKNOWN';
       }
-      print('[BackgroundLocationService] GPS 定位失败: $e, reason=$reason');
-      await _errorLogger.logGpsFail(reason: reason, accuracy: null, timeout: 15);
+      print('[BackgroundLocationService] ========== GPS 定位失败 ==========');
+      print('[BackgroundLocationService] GPS FAIL: type=${e.runtimeType}, message=$e');
+      print('[BackgroundLocationService] GPS FAIL stackTrace:\n$st');
+      print('[BackgroundLocationService] GPS FAIL reason=$reason');
+      await _errorLogger.logGpsFail(reason: reason, accuracy: null, timeout: 15, extra: 'type=${e.runtimeType}\n$e\n$st');
       return null;
     }
   }
@@ -368,13 +480,14 @@ class BackgroundLocationService {
   Future<Position?> _getNetworkPosition(String Function(DateTime) timeStr) async {
     try {
       print('[BackgroundLocationService] 尝试网络定位...');
+      print('[BackgroundLocationService] Network params: accuracy=medium, timeLimit=10s');
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
         timeLimit: const Duration(seconds: 10),
       );
       print('[BackgroundLocationService] 网络定位成功: acc=${position.accuracy}m');
       return position;
-    } catch (e) {
+    } catch (e, st) {
       String reason = 'NETWORK_TIMEOUT';
       if (e.toString().contains('PERMISSION_DENIED')) {
         reason = 'NETWORK_PERMISSION_DENIED';
@@ -385,30 +498,16 @@ class BackgroundLocationService {
       } else {
         reason = 'NETWORK_UNKNOWN';
       }
-      print('[BackgroundLocationService] 网络定位失败: $e, reason=$reason');
-      await _errorLogger.logNetworkFail(reason: reason, timeout: 10, extra: e.toString());
+      print('[BackgroundLocationService] ========== 网络定位失败 ==========');
+      print('[BackgroundLocationService] Network FAIL: type=${e.runtimeType}, message=$e');
+      print('[BackgroundLocationService] Network FAIL stackTrace:\n$st');
+      print('[BackgroundLocationService] Network FAIL reason=$reason');
+      await _errorLogger.logNetworkFail(reason: reason, timeout: 10, extra: 'type=${e.runtimeType}\n$e\n$st');
       return null;
     }
   }
 
-  /// 坐标系转换（WGS84 → GCJ-02）
-  Position _convertToGcj02(Position position) {
-    final gcj02 = wgs84ToGcj02(position.latitude, position.longitude);
-    return Position(
-      latitude: gcj02[0],
-      longitude: gcj02[1],
-      timestamp: position.timestamp,
-      accuracy: position.accuracy,
-      altitude: position.altitude,
-      altitudeAccuracy: position.altitudeAccuracy,
-      heading: position.heading,
-      headingAccuracy: position.headingAccuracy,
-      speed: position.speed,
-      speedAccuracy: position.speedAccuracy,
-    );
-  }
-
-  /// WGS84 坐标系转 GCJ-02 坐标系
+  /// WGS84 坐标系转 GCJ-02 坐标系（供显示层调用）
   List<double> wgs84ToGcj02(double lat, double lon) {
     const double pi = 3.1415926535897932384626;
     const double a = 6378245.0;
@@ -449,6 +548,19 @@ class BackgroundLocationService {
     ret += (20.0 * Math.sin(x * pi) + 40.0 * Math.sin(x / 3.0 * pi)) * 2.0 / 3.0;
     ret += (150.0 * Math.sin(x / 12.0 * pi) + 300.0 * Math.sin(x / 30.0 * pi)) * 2.0 / 3.0;
     return ret;
+  }
+
+  /// GCJ-02 坐标系转 WGS84 坐标系（逆转换，用于地址解析）
+  List<double> gcj02ToWgs84(double lat, double lon) {
+    double wgs84Lat = lat;
+    double wgs84Lon = lon;
+    // 迭代逼近，通常5次足够
+    for (int i = 0; i < 5; i++) {
+      final gcj = wgs84ToGcj02(wgs84Lat, wgs84Lon);
+      wgs84Lat += lat - gcj[0];
+      wgs84Lon += lon - gcj[1];
+    }
+    return [wgs84Lat, wgs84Lon];
   }
 
   // ========== 逆地址解析 ==========

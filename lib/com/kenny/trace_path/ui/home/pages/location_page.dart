@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:trace_path/constants/colors.dart';
+import 'package:trace_path/widgets/user_location_marker.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:trace_path/constants/strings.dart';
 import 'package:trace_path/constants/location_strings.dart' as ls;
 import '../../../services/background_location_service.dart';
 import '../../../services/friend_service.dart';
+import '../../../services/track_recorder.dart';
 import '../../../models/friend_model.dart';
 import '../../../models/location_event.dart';
 
@@ -98,12 +100,19 @@ class _LocationPageState extends State<LocationPage>
       case LocationEventType.locationUpdate:
         if (event.position != null) {
           final position = event.position!;
+          
+          // 保存轨迹（WGS84 原始坐标）
+          TrackRecorder().record(position);
+          
+          // 显示时转换为 GCJ-02（高德地图坐标）
+          final gcj02 = _locationService.wgs84ToGcj02(position.latitude, position.longitude);
+          
           setState(() {
-            _myLat = position.latitude;
-            _myLng = position.longitude;
+            _myLat = gcj02[0];
+            _myLng = gcj02[1];
             _isLoadingLocation = false;
           });
-          _updateFriendLocation(position.latitude, position.longitude);
+          _updateFriendLocation(gcj02[0], gcj02[1]);
         }
         break;
       case LocationEventType.serviceStart:
@@ -119,9 +128,13 @@ class _LocationPageState extends State<LocationPage>
   }
 
   /// 更新好友位置和地址
+  /// lat/lng: GCJ-02 坐标（用于显示）
   Future<void> _updateFriendLocation(double lat, double lng) async {
     try {
-      final address = await _locationService.getAddressFromLatLng(lat, lng);
+      // 地址解析需要 WGS84 坐标，先转换
+      final wgs84 = _locationService.gcj02ToWgs84(lat, lng);
+      final address = await _locationService.getAddressFromLatLng(wgs84[0], wgs84[1]);
+      // 保存到好友服务的是 GCJ-02 坐标（用于地图显示）
       await _friendService.updateFriendLocation(
         _friendService.getSelfPhone(),
         lat,
@@ -157,15 +170,21 @@ class _LocationPageState extends State<LocationPage>
         onTimeout: () => null,
       );
       if (position != null && mounted) {
+        // 保存轨迹（WGS84 原始坐标）
+        TrackRecorder().record(position);
+        
+        // 显示时转换为 GCJ-02
+        final gcj02 = _locationService.wgs84ToGcj02(position.latitude, position.longitude);
+        
         if (!_isInitialLocationLoaded) {
           setState(() {
-            _myLat = position.latitude;
-            _myLng = position.longitude;
+            _myLat = gcj02[0];
+            _myLng = gcj02[1];
             _isLoadingLocation = false;
           });
-          _mapController.move(LatLng(_myLat, _myLng), 14);
+          _mapController.move(LatLng(gcj02[0], gcj02[1]), 14);
         }
-        _updateFriendLocation(position.latitude, position.longitude);
+        _updateFriendLocation(gcj02[0], gcj02[1]);
       }
     } catch (e) {
       print('[LocationPage] _loadCurrentLocation error: $e');
@@ -586,31 +605,14 @@ class _LocationPageState extends State<LocationPage>
     return friends.map((friend) {
       final lat = friend.lat ?? _myLat;
       final lng = friend.lng ?? _myLng;
+      final isSelf = friend.name == '我自己';
       return Marker(
         point: LatLng(lat, lng),
-        width: 40,
-        height: 50,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: friend.name == '我自己'
-                    ? AppColors.vipGold
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 3,
-                  ),
-                ],
-              ),
-              child: Text(friend.emoji, style: const TextStyle(fontSize: 16)),
-            ),
-            const Icon(Icons.location_on, color: Colors.red, size: 24),
-          ],
-        ),
+        width: isSelf ? 44 : 36,
+        height: isSelf ? 65 : 55,
+        child: isSelf
+            ? const UserLocationMarker()
+            : FriendLocationMarker(emoji: friend.emoji, label: friend.name),
       );
     }).toList();
   }

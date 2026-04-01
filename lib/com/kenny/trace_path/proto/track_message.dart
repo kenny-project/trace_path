@@ -38,12 +38,23 @@ class TrackPointMessage {
   }
 
   /// 编码为二进制（Protobuf 风格）
-  /// 格式: timestamp_ms(i64) + latitude(double) + longitude(double) + altitude(float) + speed(float) + accuracy(float)
-  Uint8List encode() {
-    final buffer = ByteData(44); // 8+8+8+4+4+4+4(padding) = 44 bytes
+  /// 格式: timestamp_ms(varint) + latitude(double) + longitude(double) + altitude(float) + speed(float) + accuracy(float)
+  /// 返回: (编码字节, 实际编码长度)
+  (Uint8List, int) encode() {
+    // 计算 varint 实际长度
+    int varintLen = 1;
+    int tmp = timestampMs;
+    while (tmp > 0x7f) {
+      tmp >>= 7;
+      varintLen++;
+    }
+    
+    // 实际编码长度 = varint + 28 (double+double+float+float+float)
+    final actualSize = varintLen + 28;
+    final buffer = ByteData(actualSize);
     int offset = 0;
     
-    // timestamp_ms: int64 (varint)
+    // timestamp_ms: varint
     offset += _writeVarint(buffer, offset, timestampMs);
     
     // latitude: double (fixed64)
@@ -65,19 +76,21 @@ class TrackPointMessage {
     // accuracy: float (fixed32)
     buffer.setFloat32(offset, accuracy, Endian.little);
     
-    return buffer.buffer.asUint8List();
+    return (buffer.buffer.asUint8List(), actualSize);
   }
 
   /// 解码从二进制
-  static TrackPointMessage? decode(Uint8List data, int offset) {
+  /// 返回: (TrackPointMessage?, 实际编码长度)
+  static (TrackPointMessage?, int) decode(Uint8List data, int offset) {
     try {
       final buffer = ByteData.sublistView(data, offset);
       int pos = 0;
       
       // timestamp_ms: varint
       final timestampResult = _readVarint(data, offset);
-      if (timestampResult == null) return null;
-      pos += timestampResult.bytesRead;
+      if (timestampResult == null) return (null, 0);
+      final varintLen = timestampResult.bytesRead;
+      pos += varintLen;
       final timestampMs = timestampResult.value;
       
       // latitude: double
@@ -99,7 +112,7 @@ class TrackPointMessage {
       // accuracy: float
       final accuracy = buffer.getFloat32(pos, Endian.little);
       
-      return TrackPointMessage(
+      final msg = TrackPointMessage(
         timestampMs: timestampMs,
         latitude: latitude,
         longitude: longitude,
@@ -107,12 +120,15 @@ class TrackPointMessage {
         speed: speed,
         accuracy: accuracy,
       );
+      // 实际编码长度 = varint长度 + 28
+      return (msg, varintLen + 28);
     } catch (e) {
-      return null;
+      return (null, 0);
     }
   }
   
-  int get encodedSize => 44; // 固定大小
+  /// 估算编码长度（不含实际varint解析，用于初始化Buffer）
+  int get encodedSize => 44;
 }
 
 /// Varint 编码/解码工具
