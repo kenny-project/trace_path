@@ -60,15 +60,14 @@ class ErrorLoggerService {
   /// 处理写入队列
   Future<void> _processWriteQueue() async {
     if (_isWriting || _writeQueue.isEmpty) return;
-    
-    _isWriting = true;
-    
-    while (_writeQueue.isNotEmpty) {
-      final logLine = _writeQueue.removeAt(0);
-      await _writeToFile(logLine);
+    try {
+      _isWriting = true;
+      while (_writeQueue.isNotEmpty) {
+        await _writeToFile(_writeQueue.removeAt(0));
+      }
+    } finally {
+      _isWriting = false;
     }
-    
-    _isWriting = false;
   }
 
   /// 记录应用启动
