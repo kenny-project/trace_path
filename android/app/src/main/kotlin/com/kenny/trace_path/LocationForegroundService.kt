@@ -61,11 +61,18 @@ class LocationForegroundService : Service() {
     private var lastLocation: Location? = null
     private var intervalSeconds = DEFAULT_INTERVAL_SECONDS
     private var powerSaving = DEFAULT_POWER_SAVING
-    private var locationThread: Thread? = null
     
     // FusedLocationProvider
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private var locationCallback: LocationCallback? = null
+    
+    // 定位模式切换状态（精准模式用）
+    private var currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY  // 默认网络定位
+    private var lastGoodAccuracyTime = 0L  // 上次 accuracy < 30 的时间戳
+    private var lastGpsFixTime = 0L        // 上次 GPS 有信号的时间戳
+    
+    // 旧版单次轮询线程引用（requestSingleLocation 保留，但不再用于主循环）
+    private var locationThread: Thread? = null
     
     // EventChannel
     private var eventSink: EventChannel.EventSink? = null
@@ -113,23 +120,28 @@ class LocationForegroundService : Service() {
                 intervalSeconds = intent.getIntExtra("interval", DEFAULT_INTERVAL_SECONDS)
                 powerSaving = intent.getBooleanExtra("powerSaving", DEFAULT_POWER_SAVING)
                 Log.d(TAG, "Config updated: interval=${intervalSeconds}s, powerSaving=$powerSaving")
+                // 重新注册定位请求（间隔可能变了）
+                if (_isTrackingStatic.get() && locationCallback != null) {
+                    // 精准模式切换到省电模式时，重新确定默认定位源
+                    if (powerSaving && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
+                        switchToBalanced()
+                    }
+                    reRegisterLocationUpdates()
+                }
             }
             ACTION_NOTIFY_SINK_READY -> {
                 // Flutter EventChannel 重连了
-                // 如果服务被系统杀过(isTracking=false)，需要重新启动追踪
+                // 如果服务被系统杀过(_isTrackingStatic=false)，需要重新启动追踪
                 val sink = eventSink ?: LocationPluginBinder.getEventSink()
                 Log.d(TAG, "ACTION_NOTIFY_SINK_READY: isTracking=${_isTrackingStatic.get()}, lastLocation=${lastLocation != null}, sink=${sink != null}")
                 if (sink == null) {
                     Log.w(TAG, "ACTION_NOTIFY_SINK_READY: sink is null, cannot send")
-                } else if (_isTrackingStatic.get() && locationThread?.isAlive == true) {
-                    // 正常情况：服务还在跑，线程还活着，立即发一次当前位置
+                } else if (_isTrackingStatic.get() && locationCallback != null) {
+                    // 正常情况：服务还在跑，callback 还在，立即发一次当前位置
                     lastLocation?.let { sendLocationToFlutter(it) }
                 } else {
-                    // 服务被系统杀过重建了(isTracking=false)，自动重新启动追踪
+                    // 服务被系统杀过重建了(_isTrackingStatic=false)，自动重新启动追踪
                     Log.d(TAG, "ACTION_NOTIFY_SINK_READY: service was killed, auto-restarting tracking")
-                    _isTrackingStatic.set(false)
-                    locationThread?.interrupt()
-                    locationThread = null
                     startTracking()
                 }
             }
@@ -140,55 +152,80 @@ class LocationForegroundService : Service() {
 
     /**
      * 开始定位追踪
+     * 使用 requestLocationUpdates 被动接收模式，不再轮询
      */
     private fun startTracking() {
-        // 如果正在追踪且线程还活着，则忽略重复启动
-        if (_isTrackingStatic.get() && locationThread?.isAlive == true) {
+        // 如果正在追踪且 callback 还在注册，则忽略重复启动
+        if (_isTrackingStatic.get() && locationCallback != null) {
             Log.w(TAG, "Already tracking, ignore")
             return
         }
 
-        // 线程已死但标志位未清理（例如 Flutter 进程被杀死后重启），强制重置状态
+        // 重置状态
         _isTrackingStatic.set(false)
         locationThread?.interrupt()
         locationThread = null
+        lastGoodAccuracyTime = 0L
+        lastGpsFixTime = 0L
+        currentPriority = if (powerSaving) {
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        } else {
+            // 精准模式默认用网络定位（保证有位置），等有好位置再切 GPS
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        }
 
         _isTrackingStatic.set(true)
         startForeground(NOTIFICATION_ID, buildNotification())
-        
-        // 在独立线程中运行定位循环
-        locationThread = Thread {
-            Log.d(TAG, "Location loop started")
-            while (_isTrackingStatic.get()) {
-                val location = requestSingleLocation()
-                if (location != null) {
-                    lastLocation = location
-                    // 发送位置到 Flutter
-                    sendLocationToFlutter(location)
-                    // 更新通知栏
-                    updateNotification()
-                }
-                
-                if (_isTrackingStatic.get()) {
-                    // 计算实际间隔（省电模式最小60秒）
-                    val actualInterval = if (powerSaving) {
-                        maxOf(intervalSeconds, 60)
-                    } else {
-                        intervalSeconds
-                    }
-                    
-                    // 等待下次定位
-                    try {
-                        Thread.sleep(actualInterval * 1000L)
-                    } catch (e: InterruptedException) {
-                        Log.d(TAG, "Location loop interrupted")
-                        break
-                    }
+
+        // 创建 LocationCallback
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                result.lastLocation?.let { location ->
+                    handleLocationResult(location)
                 }
             }
-            Log.d(TAG, "Location loop exited")
+
+            override fun onLocationAvailability(availability: LocationAvailability) {
+                Log.d(TAG, "LocationAvailability: isLocationAvailable=${availability.isLocationAvailable}")
+                // GPS 信号不可用时记录时间
+                if (!availability.isLocationAvailable && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
+                    lastGpsFixTime = System.currentTimeMillis()
+                }
+            }
         }
-        locationThread?.start()
+
+        // 启动定位更新
+        requestLocationUpdates()
+        Log.d(TAG, "startTracking: started with priority=$currentPriority")
+    }
+
+    /**
+     * 根据当前配置发起定位请求
+     */
+    private fun requestLocationUpdates() {
+        if (!_isTrackingStatic.get() || locationCallback == null) return
+
+        val actualInterval = if (powerSaving) {
+            maxOf(intervalSeconds, 60) * 1000L
+        } else {
+            intervalSeconds * 1000L
+        }
+
+        val builder = LocationRequest.Builder(currentPriority, actualInterval)
+            .setMinUpdateIntervalMillis(actualInterval / 2)
+
+        try {
+            fusedLocationClient.requestLocationUpdates(
+                builder.build(),
+                locationCallback!!,
+                Looper.getMainLooper()
+            )
+            Log.d(TAG, "requestLocationUpdates: registered with priority=$currentPriority, interval=${actualInterval}ms")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "requestLocationUpdates: SecurityException", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "requestLocationUpdates: Exception", e)
+        }
     }
 
     /**
@@ -197,12 +234,83 @@ class LocationForegroundService : Service() {
     private fun stopTracking() {
         Log.d(TAG, "stopTracking called")
         _isTrackingStatic.set(false)
-        
-        locationThread?.interrupt()
-        locationThread = null
-        
+
+        locationCallback?.let {
+            try {
+                fusedLocationClient.removeLocationUpdates(it)
+            } catch (e: Exception) {
+                Log.w(TAG, "removeLocationUpdates failed", e)
+            }
+        }
+        locationCallback = null
+
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    /**
+     * 处理收到的定位结果
+     * 精准模式根据 accuracy 自动切换 GPS/网络定位
+     */
+    private fun handleLocationResult(location: Location) {
+        lastLocation = location
+        sendLocationToFlutter(location)
+        updateNotification()
+
+        if (!powerSaving) {
+            // 精准模式：根据 accuracy 动态切换定位源
+            when (currentPriority) {
+                Priority.PRIORITY_BALANCED_POWER_ACCURACY -> {
+                    // 当前是网络定位，收到好位置切到 GPS
+                    if (location.accuracy < 30f) {
+                        Log.d(TAG, "handleLocationResult: accuracy=${location.accuracy}m, switching to HIGH_ACCURACY")
+                        switchToHighAccuracy()
+                    }
+                }
+                Priority.PRIORITY_HIGH_ACCURACY -> {
+                    // 当前是 GPS 定位，精度变差则切回网络
+                    if (location.accuracy > 50f) {
+                        Log.d(TAG, "handleLocationResult: accuracy=${location.accuracy}m > 50m, switching to BALANCED")
+                        switchToBalanced()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 切换到高精度 GPS 定位
+     */
+    private fun switchToHighAccuracy() {
+        if (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) return
+        currentPriority = Priority.PRIORITY_HIGH_ACCURACY
+        lastGoodAccuracyTime = System.currentTimeMillis()
+        reRegisterLocationUpdates()
+        Log.d(TAG, "switchToHighAccuracy: done")
+    }
+
+    /**
+     * 切换到网络定位（地下室等无 GPS 信号场景）
+     */
+    private fun switchToBalanced() {
+        if (currentPriority == Priority.PRIORITY_BALANCED_POWER_ACCURACY) return
+        currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        reRegisterLocationUpdates()
+        Log.d(TAG, "switchToBalanced: done")
+    }
+
+    /**
+     * 重新注册定位更新（切换定位源）
+     */
+    private fun reRegisterLocationUpdates() {
+        locationCallback?.let {
+            try {
+                fusedLocationClient.removeLocationUpdates(it)
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+        requestLocationUpdates()
     }
 
     /**
@@ -413,6 +521,7 @@ class LocationForegroundService : Service() {
     private fun buildNotification(): Notification {
         val status = if (_isTrackingStatic.get()) "运行中" else "已停止"
         val mode = if (powerSaving) "省电模式 ${maxOf(intervalSeconds, 60)}秒" else "精准模式 ${intervalSeconds}秒"
+        val source = if (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) "GPS" else "网络"
         val locationText = lastLocation?.let {
             String.format("位置: %.6f, %.6f", it.latitude, it.longitude)
         } ?: "位置: 获取中..."
@@ -423,7 +532,7 @@ class LocationForegroundService : Service() {
             "更新: ${timeFormat.format(Date(it.time))}"
         } ?: ""
         
-        val title = "TracePath 正在运行"
+        val title = "TracePath [$source] 正在运行"
         val content = "$mode | $locationText | $accuracyText | $updateTime"
 
         val notificationIntent = Intent(this, MainActivity::class.java)
@@ -469,7 +578,14 @@ class LocationForegroundService : Service() {
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
         _isTrackingStatic.set(false)
-        locationThread?.interrupt()
+        locationCallback?.let {
+            try {
+                fusedLocationClient.removeLocationUpdates(it)
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+        locationCallback = null
         super.onDestroy()
     }
 
