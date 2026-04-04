@@ -31,13 +31,9 @@ class LocationSettingsService {
   }
 
   Future<void> save() async {
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/$_fileName');
-      await file.writeAsString(jsonEncode(settingsField.toJson()));
-    } catch (e) {
-      print('[LocationSettingsService] 保存失败: $e');
-    }
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/$_fileName');
+    await file.writeAsString(jsonEncode(settingsField.toJson()));
   }
 
   Future<void> update({

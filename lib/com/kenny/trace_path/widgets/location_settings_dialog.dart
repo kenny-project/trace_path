@@ -37,6 +37,7 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
 
   Future<void> _checkServiceRunning() async {
     final running = await widget.locationService.checkRunning();
+    print('[LocationSettingsDialog] ★★★ _checkServiceRunning: running=$running ★★★');
     if (mounted) {
       setState(() {
         _isServiceRunning = running;
@@ -233,7 +234,18 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
       } else {
         if (_isServiceRunning) {
           // 服务正在运行，停止服务
-          await widget.locationService.stop();
+          try {
+            await widget.locationService.stop();
+          } catch (e) {
+            // 停止服务失败，不关闭对话框
+            setState(() => _isLoading = false);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('停止定位失败: $e'), backgroundColor: Colors.red),
+              );
+            }
+            return;
+          }
         }
       }
 
