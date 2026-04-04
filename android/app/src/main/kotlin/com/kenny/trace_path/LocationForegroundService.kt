@@ -207,57 +207,89 @@ class LocationForegroundService : Service() {
 
     /**
      * 请求单次定位
+     * 优先使用精准模式（GPS），超时后自动降级到网络定位（Wi-Fi/基站）
      */
     private fun requestSingleLocation(): Location? {
         Log.d(TAG, "requestSingleLocation: start")
-        
+
+        // 优先精准模式（GPS）
+        val location = requestSingleLocationWithPriority(
+            if (powerSaving) Priority.PRIORITY_BALANCED_POWER_ACCURACY
+            else Priority.PRIORITY_HIGH_ACCURACY,
+            45
+        )
+
+        if (location != null) {
+            Log.d(TAG, "requestSingleLocation: GPS success lat=${location.latitude}, lng=${location.longitude}, accuracy=${location.accuracy}m")
+            return location
+        }
+
+        // GPS 超时，降级到网络定位（Wi-Fi/基站，不依赖 GPS 信号）
+        Log.w(TAG, "requestSingleLocation: GPS timeout, falling back to network positioning")
+        val networkLocation = requestSingleLocationWithPriority(
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            30
+        )
+
+        if (networkLocation != null) {
+            Log.d(TAG, "requestSingleLocation: network success lat=${networkLocation.latitude}, lng=${networkLocation.longitude}, accuracy=${networkLocation.accuracy}m")
+        } else {
+            Log.w(TAG, "requestSingleLocation: all methods failed")
+        }
+
+        return networkLocation
+    }
+
+    /**
+     * 使用指定优先级请求单次定位
+     * @param priority 定位优先级
+     * @param timeoutSeconds 超时秒数
+     */
+    private fun requestSingleLocationWithPriority(priority: Int, timeoutSeconds: Long): Location? {
         try {
-            val builder = LocationRequest.Builder(
-                if (powerSaving) Priority.PRIORITY_BALANCED_POWER_ACCURACY
-                else Priority.PRIORITY_HIGH_ACCURACY,
-                0 // 立即获取
-            ).setMaxUpdates(1)
-            
-            val callback = object : LocationCallback() {
-                override fun onLocationResult(result: LocationResult) {
-                    Log.d(TAG, "onLocationResult: ${result.lastLocation}")
-                }
-            }
-            
-            // 创建一个 CompletableFuture 来等待结果
+            val builder = LocationRequest.Builder(priority, 0)
+                .setMaxUpdates(1)
+                .setWaitForAccurateLocation(false) // false:不等待精确位置。true:等待精确位置 
+
             var resultLocation: Location? = null
             val latch = java.util.concurrent.CountDownLatch(1)
-            
+
             val singleCallback = object : LocationCallback() {
                 override fun onLocationResult(result: LocationResult) {
                     resultLocation = result.lastLocation
-                    fusedLocationClient.removeLocationUpdates(this)
+                    try {
+                        fusedLocationClient.removeLocationUpdates(this)
+                    } catch (e: Exception) {
+                        // ignore
+                    }
                     latch.countDown()
                 }
             }
-            
+
             fusedLocationClient.requestLocationUpdates(
                 builder.build(),
                 singleCallback,
                 Looper.getMainLooper()
             )
-            
-            // 等待最多45秒
-            latch.await(45, java.util.concurrent.TimeUnit.SECONDS)
-            
-            if (resultLocation != null) {
-                Log.d(TAG, "requestSingleLocation: success lat=${resultLocation!!.latitude}, lng=${resultLocation!!.longitude}")
-            } else {
-                Log.w(TAG, "requestSingleLocation: timeout or failed")
+
+            // 等待
+            val waited = latch.await(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
+            if (!waited) {
+                Log.w(TAG, "requestSingleLocationWithPriority($priority): timeout after ${timeoutSeconds}s")
+                try {
+                    fusedLocationClient.removeLocationUpdates(singleCallback)
+                } catch (e: Exception) {
+                    // ignore
+                }
             }
-            
+
             return resultLocation
-            
+
         } catch (e: SecurityException) {
-            Log.e(TAG, "SecurityException in requestSingleLocation", e)
+            Log.e(TAG, "SecurityException in requestSingleLocationWithPriority", e)
             return null
         } catch (e: Exception) {
-            Log.e(TAG, "Exception in requestSingleLocation", e)
+            Log.e(TAG, "Exception in requestSingleLocationWithPriority", e)
             return null
         }
     }
@@ -426,7 +458,12 @@ class LocationForegroundService : Service() {
      */
     private fun updateNotification() {
         val manager = getSystemService(NotificationManager::class.java)
-        manager?.notify(NOTIFICATION_ID, buildNotification())
+        if (manager == null) {
+            Log.w(TAG, "updateNotification: NotificationManager is null!")
+            return
+        }
+        Log.d(TAG, "updateNotification: lastLocation=${lastLocation?.latitude},${lastLocation?.longitude}")
+        manager.notify(NOTIFICATION_ID, buildNotification())
     }
 
     override fun onDestroy() {
