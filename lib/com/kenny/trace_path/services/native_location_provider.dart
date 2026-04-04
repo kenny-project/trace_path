@@ -55,7 +55,10 @@ class NativeLocationProvider implements LocationProvider {
       final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getCurrentLocation', {
         'useHighAccuracy': useHighAccuracy,
         'timeoutMs': timeoutMs,
-      });
+      }).timeout(
+        Duration(milliseconds: timeoutMs + 5000), // 多加5秒缓冲
+        onTimeout: () => null, // 超时返回null，让调用方处理
+      );
 
       if (result == null) {
         print('[NativeLocationProvider] 原生定位返回 null');

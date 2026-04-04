@@ -34,7 +34,7 @@ class BackgroundLocationService {
 
   // ========== 定位提供者（工厂模式）==========
   LocationProvider? _locationProvider;
-  bool _useNativeLocation = true; // 默认使用原生定位
+  bool _useNativeLocation = false; // 默认使用 Geolocator（调试：临时改回 Geolocator）
 
   // ========== 订阅者管理 ==========
   final List<LocationCallback> _subscribers = [];
