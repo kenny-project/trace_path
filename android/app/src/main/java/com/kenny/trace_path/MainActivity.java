@@ -14,6 +14,9 @@ public class MainActivity extends FlutterActivity {
     public void configureFlutterEngine(FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
 
+        // 注册原生定位处理器（native_location 通道）
+        NativeLocationHandler.registerWith(this, flutterEngine);
+
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CHANNEL)
             .setMethodCallHandler((call, result) -> {
                 android.util.Log.d("MainActivity", "MethodChannel: method=" + call.method + ", args=" + call.arguments());
