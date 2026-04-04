@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.location.Location
+import android.location.LocationManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -22,34 +23,33 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
-
 /**
  * Android 前台定位服务
- * 
- * 内置定位循环，通过 EventChannel 推送位置给 Flutter
- * 通知栏由服务自己管理，动态更新
+ *
+ * 内置定位循环,通过 EventChannel 推送位置给 Flutter
+ * 通知栏由服务自己管理,动态更新
  */
 class LocationForegroundService : Service() {
 
     companion object {
         private const val TAG = "LocationForegroundService"
-        
+
         // 状态
         const val ACTION_START = "com.kenny.trace_path.START"
         const val ACTION_STOP = "com.kenny.trace_path.STOP"
         const val ACTION_UPDATE_CONFIG = "com.kenny.trace_path.UPDATE_CONFIG"
         const val ACTION_NOTIFY_SINK_READY = "com.kenny.trace_path.NOTIFY_SINK_READY"
-        
+
         // 默认值
         const val DEFAULT_INTERVAL_SECONDS = 30
         const val DEFAULT_POWER_SAVING = false
-        
+
         // EventChannel
         const val EVENT_CHANNEL_NAME = "com.kenny.trace_path/location_events"
-        
-        // 静态追踪状态标志（进程内共享，比 ActivityManager 更可靠）
+
+        // 静态追踪状态标志(进程内共享,比 ActivityManager 更可靠)
         private val _isTrackingStatic = AtomicBoolean(false)
-        
+
         fun isServiceTracking(): Boolean = _isTrackingStatic.get()
     }
 
@@ -61,26 +61,26 @@ class LocationForegroundService : Service() {
     private var lastLocation: Location? = null
     private var intervalSeconds = DEFAULT_INTERVAL_SECONDS
     private var powerSaving = DEFAULT_POWER_SAVING
-    
+
     // FusedLocationProvider
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private var locationCallback: LocationCallback? = null
-    
-    // 定位模式切换状态（精准模式用）
+
+    // 定位模式切换状态(精准模式用)
     private var currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY  // 默认网络定位
     private var lastGoodAccuracyTime = 0L  // 上次 accuracy < 30 的时间戳
     private var lastGpsFixTime = 0L        // 上次 GPS 有信号的时间戳
-    
-    // 旧版单次轮询线程引用（requestSingleLocation 保留，但不再用于主循环）
+
+    // 旧版单次轮询线程引用(requestSingleLocation 保留,但不再用于主循环)
     private var locationThread: Thread? = null
-    
+
     // EventChannel
     private var eventSink: EventChannel.EventSink? = null
-    
+
     // 日期格式
     private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
-    // 本地轨迹文件（Kotlin 侧兜底记录，Flutter 被杀后仍继续）
+    // 本地轨迹文件(Kotlin 侧兜底记录,Flutter 被杀后仍继续)
     private val dateFormatFile = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private var trackFile: File? = null
 
@@ -104,7 +104,7 @@ class LocationForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand: action=${intent?.action}")
-        
+
         if (intent == null) return START_STICKY
 
         when (intent.action) {
@@ -120,9 +120,9 @@ class LocationForegroundService : Service() {
                 intervalSeconds = intent.getIntExtra("interval", DEFAULT_INTERVAL_SECONDS)
                 powerSaving = intent.getBooleanExtra("powerSaving", DEFAULT_POWER_SAVING)
                 Log.d(TAG, "Config updated: interval=${intervalSeconds}s, powerSaving=$powerSaving")
-                // 重新注册定位请求（间隔可能变了）
+                // 重新注册定位请求(间隔可能变了)
                 if (_isTrackingStatic.get() && locationCallback != null) {
-                    // 精准模式切换到省电模式时，重新确定默认定位源
+                    // 精准模式切换到省电模式时,重新确定默认定位源
                     if (powerSaving && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
                         switchToBalanced()
                     }
@@ -131,16 +131,16 @@ class LocationForegroundService : Service() {
             }
             ACTION_NOTIFY_SINK_READY -> {
                 // Flutter EventChannel 重连了
-                // 如果服务被系统杀过(_isTrackingStatic=false)，需要重新启动追踪
+                // 如果服务被系统杀过(_isTrackingStatic=false),需要重新启动追踪
                 val sink = eventSink ?: LocationPluginBinder.getEventSink()
                 Log.d(TAG, "ACTION_NOTIFY_SINK_READY: isTracking=${_isTrackingStatic.get()}, lastLocation=${lastLocation != null}, sink=${sink != null}")
                 if (sink == null) {
                     Log.w(TAG, "ACTION_NOTIFY_SINK_READY: sink is null, cannot send")
                 } else if (_isTrackingStatic.get() && locationCallback != null) {
-                    // 正常情况：服务还在跑，callback 还在，立即发一次当前位置
+                    // 正常情况:服务还在跑,callback 还在,立即发一次当前位置
                     lastLocation?.let { sendLocationToFlutter(it) }
                 } else {
-                    // 服务被系统杀过重建了(_isTrackingStatic=false)，自动重新启动追踪
+                    // 服务被系统杀过重建了(_isTrackingStatic=false),自动重新启动追踪
                     Log.d(TAG, "ACTION_NOTIFY_SINK_READY: service was killed, auto-restarting tracking")
                     startTracking()
                 }
@@ -152,10 +152,10 @@ class LocationForegroundService : Service() {
 
     /**
      * 开始定位追踪
-     * 使用 requestLocationUpdates 被动接收模式，不再轮询
+     * 使用 requestLocationUpdates 被动接收模式,不再轮询
      */
     private fun startTracking() {
-        // 如果正在追踪且 callback 还在注册，则忽略重复启动
+        // 如果正在追踪且 callback 还在注册,则忽略重复启动
         if (_isTrackingStatic.get() && locationCallback != null) {
             Log.w(TAG, "Already tracking, ignore")
             return
@@ -170,7 +170,7 @@ class LocationForegroundService : Service() {
         currentPriority = if (powerSaving) {
             Priority.PRIORITY_BALANCED_POWER_ACCURACY
         } else {
-            // 精准模式默认用网络定位（保证有位置），等有好位置再切 GPS
+            // 精准模式默认用网络定位(保证有位置),等有好位置再切 GPS
             Priority.PRIORITY_BALANCED_POWER_ACCURACY
         }
 
@@ -203,16 +203,28 @@ class LocationForegroundService : Service() {
      * 根据当前配置发起定位请求
      */
     private fun requestLocationUpdates() {
-        if (!_isTrackingStatic.get() || locationCallback == null) return
+
+        if (!_isTrackingStatic.get()) {
+            Log.w(TAG, "requestLocationUpdates: skipped, _isTrackingStatic=false")
+            return
+        }
+
+        if (locationCallback == null) {
+            Log.w(TAG, "requestLocationUpdates: skipped, locationCallback=null")
+            return
+        }
 
         val actualInterval = if (powerSaving) {
             maxOf(intervalSeconds, 60) * 1000L
         } else {
             intervalSeconds * 1000L
         }
-
+        // 测试一下，默认使用高精定位
+        currentPriority = Priority.PRIORITY_HIGH_ACCURACY;
         val builder = LocationRequest.Builder(currentPriority, actualInterval)
             .setMinUpdateIntervalMillis(actualInterval / 2)
+            // 配合距离过滤，防止网络定位把你"瞬移"到别处
+            .setMinUpdateDistanceMeters(2.0f)
 
         try {
             fusedLocationClient.requestLocationUpdates(
@@ -253,22 +265,42 @@ class LocationForegroundService : Service() {
      * 精准模式根据 accuracy 自动切换 GPS/网络定位
      */
     private fun handleLocationResult(location: Location) {
+        val isGps = location.provider == LocationManager.GPS_PROVIDER
+        val accuracy = location.accuracy // 精度（米）
+
+        // --- 策略 A：如果是 GPS，无条件记录（或仅做轻微过滤） ---
+        if (isGps) {
+            if (accuracy > 50) { // 即使是 GPS，误差太大也不要
+                Log.d(TAG, "丢弃低精度网络定位: ${accuracy}米")
+                return
+            }
+        }
+        else {
+            // --- 策略 B：如果是网络定位（Wi-Fi/基站），要严格过滤 ---
+            // 网络定位经常会有“瞬移”现象（比如突然跳到 500米外）
+            // 如果精度大于 100米，直接丢弃，不要画在轨迹上
+            if (accuracy > 100) {
+                Log.d(TAG, "丢弃低精度网络定位: ${accuracy}米")
+                return
+            }
+        }
+
         lastLocation = location
         sendLocationToFlutter(location)
         updateNotification()
 
         if (!powerSaving) {
-            // 精准模式：根据 accuracy 动态切换定位源
+            // 精准模式:根据 accuracy 动态切换定位源
             when (currentPriority) {
                 Priority.PRIORITY_BALANCED_POWER_ACCURACY -> {
-                    // 当前是网络定位，收到好位置切到 GPS
+                    // 当前是网络定位,收到好位置切到 GPS
                     if (location.accuracy < 30f) {
                         Log.d(TAG, "handleLocationResult: accuracy=${location.accuracy}m, switching to HIGH_ACCURACY")
                         switchToHighAccuracy()
                     }
                 }
                 Priority.PRIORITY_HIGH_ACCURACY -> {
-                    // 当前是 GPS 定位，精度变差则切回网络
+                    // 当前是 GPS 定位,精度变差则切回网络
                     if (location.accuracy > 50f) {
                         Log.d(TAG, "handleLocationResult: accuracy=${location.accuracy}m > 50m, switching to BALANCED")
                         switchToBalanced()
@@ -290,7 +322,7 @@ class LocationForegroundService : Service() {
     }
 
     /**
-     * 切换到网络定位（地下室等无 GPS 信号场景）
+     * 切换到网络定位(地下室等无 GPS 信号场景)
      */
     private fun switchToBalanced() {
         if (currentPriority == Priority.PRIORITY_BALANCED_POWER_ACCURACY) return
@@ -300,7 +332,7 @@ class LocationForegroundService : Service() {
     }
 
     /**
-     * 重新注册定位更新（切换定位源）
+     * 重新注册定位更新(切换定位源)
      */
     private fun reRegisterLocationUpdates() {
         locationCallback?.let {
@@ -315,12 +347,12 @@ class LocationForegroundService : Service() {
 
     /**
      * 请求单次定位
-     * 优先使用精准模式（GPS），超时后自动降级到网络定位（Wi-Fi/基站）
+     * 优先使用精准模式(GPS),超时后自动降级到网络定位(Wi-Fi/基站)
      */
     private fun requestSingleLocation(): Location? {
         Log.d(TAG, "requestSingleLocation: start")
 
-        // 优先精准模式（GPS）
+        // 优先精准模式(GPS)
         val location = requestSingleLocationWithPriority(
             if (powerSaving) Priority.PRIORITY_BALANCED_POWER_ACCURACY
             else Priority.PRIORITY_HIGH_ACCURACY,
@@ -332,7 +364,7 @@ class LocationForegroundService : Service() {
             return location
         }
 
-        // GPS 超时，降级到网络定位（Wi-Fi/基站，不依赖 GPS 信号）
+        // GPS 超时,降级到网络定位(Wi-Fi/基站,不依赖 GPS 信号)
         Log.w(TAG, "requestSingleLocation: GPS timeout, falling back to network positioning")
         val networkLocation = requestSingleLocationWithPriority(
             Priority.PRIORITY_BALANCED_POWER_ACCURACY,
@@ -357,7 +389,7 @@ class LocationForegroundService : Service() {
         try {
             val builder = LocationRequest.Builder(priority, 0)
                 .setMaxUpdates(1)
-                .setWaitForAccurateLocation(false) // false:不等待精确位置。true:等待精确位置 
+                .setWaitForAccurateLocation(false) // false:不等待精确位置。true:等待精确位置
 
             var resultLocation: Location? = null
             val latch = java.util.concurrent.CountDownLatch(1)
@@ -406,14 +438,14 @@ class LocationForegroundService : Service() {
      * 发送位置到 Flutter
      */
     private fun sendLocationToFlutter(location: Location) {
-        // 优先使用直接设置的 eventSink，否则使用 LocationPluginBinder
+        // 优先使用直接设置的 eventSink,否则使用 LocationPluginBinder
         val sink = eventSink ?: LocationPluginBinder.getEventSink()
         if (sink == null) {
             Log.w(TAG, "sendLocationToFlutter: sink is null, event dropped! lat=${location.latitude}, lng=${location.longitude}")
             return
         }
         Log.d(TAG, "sendLocationToFlutter: sink available, sending lat=${location.latitude}, lng=${location.longitude}")
-        
+
         val locationMap = HashMap<String, Any>()
         locationMap["latitude"] = location.latitude
         locationMap["longitude"] = location.longitude
@@ -422,7 +454,7 @@ class LocationForegroundService : Service() {
         locationMap["speed"] = if (location.hasSpeed()) location.speed.toDouble() else 0.0
         locationMap["heading"] = 0.0
         locationMap["timestamp"] = location.time
-        
+
         try {
             runOnMainThread {
                 sink.success(locationMap)
@@ -432,12 +464,12 @@ class LocationForegroundService : Service() {
             Log.e(TAG, "Error sending location to Flutter", e)
         }
 
-        // Kotlin 侧兜底记录（Flutter 被杀后仍继续记录）
+        // Kotlin 侧兜底记录(Flutter 被杀后仍继续记录)
         saveLocationToFile(location)
     }
 
     /**
-     * 初始化轨迹文件（按天分文件，CSV 格式）
+     * 初始化轨迹文件(按天分文件,CSV 格式)
      */
     private fun initTrackFile() {
         try {
@@ -446,7 +478,7 @@ class LocationForegroundService : Service() {
             val dateStr = dateFormatFile.format(Date())
             trackFile = File(trackDir, "track_$dateStr.csv")
 
-            // 如果文件不存在，写入 CSV 表头
+            // 如果文件不存在,写入 CSV 表头
             if (!trackFile!!.exists()) {
                 FileWriter(trackFile, true).use { writer ->
                     writer.append("timestamp,latitude,longitude,accuracy,altitude,speed\n")
@@ -459,8 +491,8 @@ class LocationForegroundService : Service() {
     }
 
     /**
-     * 保存位置到本地文件（Kotlin 侧兜底记录，Flutter 被杀后仍继续）
-     * 格式：timestamp,latitude,longitude,accuracy,altitude,speed
+     * 保存位置到本地文件(Kotlin 侧兜底记录,Flutter 被杀后仍继续)
+     * 格式:timestamp,latitude,longitude,accuracy,altitude,speed
      */
     private fun saveLocationToFile(location: Location) {
         try {
@@ -501,15 +533,15 @@ class LocationForegroundService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID, 
-                "实时定位", 
+                CHANNEL_ID,
+                "实时定位",
                 NotificationManager.IMPORTANCE_LOW
             )
             channel.description = "TracePath 后台定位服务"
             channel.setShowBadge(false)
             channel.enableLights(false)
             channel.enableVibration(false)
-            
+
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
@@ -518,10 +550,11 @@ class LocationForegroundService : Service() {
     /**
      * 构建通知
      */
-    private fun buildNotification(): Notification {
+    private fun buildNotification(loc: Location? = null): Notification {
         val status = if (_isTrackingStatic.get()) "运行中" else "已停止"
         val mode = if (powerSaving) "省电模式 ${maxOf(intervalSeconds, 60)}秒" else "精准模式 ${intervalSeconds}秒"
-        val source = if (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) "GPS" else "网络"
+        val isGps = (loc ?: lastLocation)?.provider == LocationManager.GPS_PROVIDER
+        val source = if (isGps) "GPS" else "网络"
         val locationText = lastLocation?.let {
             String.format("位置: %.6f, %.6f", it.latitude, it.longitude)
         } ?: "位置: 获取中..."
@@ -531,7 +564,7 @@ class LocationForegroundService : Service() {
         val updateTime = lastLocation?.let {
             "更新: ${timeFormat.format(Date(it.time))}"
         } ?: ""
-        
+
         val title = "TracePath [$source] 正在运行"
         val content = "$mode | $locationText | $accuracyText | $updateTime"
 
@@ -565,14 +598,14 @@ class LocationForegroundService : Service() {
     /**
      * 更新通知
      */
-    private fun updateNotification() {
+    private fun updateNotification(loc: Location? = null) {
         val manager = getSystemService(NotificationManager::class.java)
         if (manager == null) {
             Log.w(TAG, "updateNotification: NotificationManager is null!")
             return
         }
-        Log.d(TAG, "updateNotification: lastLocation=${lastLocation?.latitude},${lastLocation?.longitude}")
-        manager.notify(NOTIFICATION_ID, buildNotification())
+        Log.d(TAG, "updateNotification: loc=${loc?.latitude},${loc?.longitude}, provider=${loc?.provider}")
+        manager.notify(NOTIFICATION_ID, buildNotification(loc))
     }
 
     override fun onDestroy() {
