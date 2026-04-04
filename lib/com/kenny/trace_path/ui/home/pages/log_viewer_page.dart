@@ -12,6 +12,7 @@ class LogViewerPage extends StatefulWidget {
 
 class _LogViewerPageState extends State<LogViewerPage> {
   final ErrorLoggerService _errorLogger = ErrorLoggerService();
+  final ScrollController _scrollController = ScrollController();
   Map<String, String> _allLogs = {};
   bool _isLoading = true;
   String? _error;
@@ -21,6 +22,24 @@ class _LogViewerPageState extends State<LogViewerPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadLogs();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
@@ -42,6 +61,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
         _allLogs = logs;
         _isLoading = false;
       });
+      _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
       
@@ -222,6 +242,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
           ),
         Expanded(
           child: SingleChildScrollView(
+            controller: _scrollController,
             padding: const EdgeInsets.all(16),
             child: SelectableText(
               firstLog,
