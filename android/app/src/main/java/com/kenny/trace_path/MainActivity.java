@@ -9,6 +9,7 @@ import io.flutter.plugin.common.MethodChannel;
 
 public class MainActivity extends FlutterActivity {
     private static final String CHANNEL = "com.kenny.trace_path/location_service";
+    private LocationPlugin locationPlugin;
 
     @Override
     public void configureFlutterEngine(FlutterEngine flutterEngine) {
@@ -17,6 +18,11 @@ public class MainActivity extends FlutterActivity {
         // 注册原生定位处理器（native_location 通道）
         NativeLocationHandler.registerWith(this, flutterEngine);
 
+        // 注册定位服务插件（包含 MethodChannel 和 EventChannel）
+        locationPlugin = new LocationPlugin(this);
+        locationPlugin.registerWith(flutterEngine);
+
+        // 保留原有的系统相关 MethodChannel
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CHANNEL)
             .setMethodCallHandler((call, result) -> {
                 android.util.Log.d("MainActivity", "MethodChannel: method=" + call.method + ", args=" + call.arguments());
@@ -100,38 +106,8 @@ public class MainActivity extends FlutterActivity {
                     return;
                 }
 
-                Intent intent = new Intent(MainActivity.this, LocationForegroundService.class);
-
-                if (call.method.equals("start")) {
-                    int interval = 10;
-                    boolean powerSaving = false;
-                    if (call.arguments() != null && call.arguments() instanceof java.util.Map) {
-                        java.util.Map args = (java.util.Map) call.arguments();
-                        interval = args.containsKey("interval") ? ((Number) args.get("interval")).intValue() : 10;
-                        powerSaving = args.containsKey("powerSaving") && (Boolean) args.get("powerSaving");
-                    }
-                    intent.setAction("com.kenny.trace_path.START");
-                    intent.putExtra("interval", interval * 1000L);
-                    intent.putExtra("powerSaving", powerSaving);
-                    MainActivity.this.startForegroundService(intent);
-                    result.success(true);
-                } else if (call.method.equals("stop")) {
-                    intent.setAction("com.kenny.trace_path.STOP");
-                    MainActivity.this.startService(intent);
-                    result.success(true);
-                } else if (call.method.equals("updateConfig")) {
-                    if (call.arguments() != null && call.arguments() instanceof java.util.Map) {
-                        java.util.Map args = (java.util.Map) call.arguments();
-                        int interval = args.containsKey("interval") ? ((Number) args.get("interval")).intValue() : 10;
-                        boolean powerSaving = args.containsKey("powerSaving") && (Boolean) args.get("powerSaving");
-                        intent.setAction("com.kenny.trace_path.UPDATE_CONFIG");
-                        intent.putExtra("interval", interval * 1000L);
-                        intent.putExtra("powerSaving", powerSaving);
-                        MainActivity.this.startService(intent);
-                    }
-                    result.success(true);
-                } else if (call.method.equals("setPhoneNumber")) {
-                    // 保存手机号到 SharedPreferences，供 LocationForegroundService 读取
+                if (call.method.equals("setPhoneNumber")) {
+                    // 保存手机号到 SharedPreferences
                     String phoneNumber = null;
                     if (call.arguments() != null && call.arguments() instanceof java.util.Map) {
                         java.util.Map args = (java.util.Map) call.arguments();
@@ -143,26 +119,12 @@ public class MainActivity extends FlutterActivity {
                         android.util.Log.d("MainActivity", "setPhoneNumber: " + phoneNumber);
                     }
                     result.success(true);
-                } else if (call.method.equals("isRunning")) {
-                    // 使用 ActivityManager 检查真实运行状态
-                    try {
-                        android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(android.content.Context.ACTIVITY_SERVICE);
-                        for (android.app.ActivityManager.RunningServiceInfo service : am.getRunningServices(Integer.MAX_VALUE)) {
-                            if ("com.kenny.trace_path.LocationForegroundService".equals(service.service.getClassName())) {
-                                android.util.Log.d("MainActivity", "isRunning: service is ACTIVE");
-                                result.success(true);
-                                return;
-                            }
-                        }
-                        android.util.Log.d("MainActivity", "isRunning: service NOT found");
-                        result.success(false);
-                    } catch (Exception e) {
-                        android.util.Log.e("MainActivity", "isRunning check error: " + e.getMessage());
-                        result.success(false);
-                    }
-                } else {
-                    result.notImplemented();
+                    return;
                 }
+
+                // 其他方法转发给 locationPlugin 处理
+                // 注意：start/stop/updateConfig/isRunning 已由 LocationPlugin 处理
+                result.notImplemented();
             });
     }
 }

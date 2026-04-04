@@ -35,6 +35,7 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
+        <!-- 定位前台服务（Kotlin 实现）-->
         <service
             android:name=".LocationForegroundService"
             android:enabled="true"
