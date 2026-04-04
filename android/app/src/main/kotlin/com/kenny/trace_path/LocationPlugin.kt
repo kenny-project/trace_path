@@ -199,20 +199,11 @@ class LocationPlugin(private val context: Context) {
      * 检查服务是否运行
      */
     fun isLocationServiceRunning(): Boolean {
-        try {
-            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            for (service in am.getRunningServices(Integer.MAX_VALUE)) {
-                if ("com.kenny.trace_path.LocationForegroundService" == service.service.className) {
-                    Log.d(TAG, "isLocationServiceRunning: true")
-                    return true
-                }
-            }
-            Log.d(TAG, "isLocationServiceRunning: false")
-            return false
-        } catch (e: Exception) {
-            Log.e(TAG, "isLocationServiceRunning error", e)
-            return false
-        }
+        // 直接检查 LocationForegroundService 的 companion object 静态追踪状态标志
+        // 比 ActivityManager.getRunningServices() 更可靠（后者可能被系统缓存）
+        val tracking = LocationForegroundService.isServiceTracking()
+        Log.d(TAG, "isLocationServiceRunning: tracking=${tracking}")
+        return tracking
     }
 
     /**

@@ -46,6 +46,11 @@ class LocationForegroundService : Service() {
         
         // EventChannel
         const val EVENT_CHANNEL_NAME = "com.kenny.trace_path/location_events"
+        
+        // 静态追踪状态标志（进程内共享，比 ActivityManager 更可靠）
+        private val _isTrackingStatic = AtomicBoolean(false)
+        
+        fun isServiceTracking(): Boolean = _isTrackingStatic.get()
     }
 
     // 通知渠道
@@ -53,10 +58,10 @@ class LocationForegroundService : Service() {
     private val NOTIFICATION_ID = 888
 
     // 状态
-    private var isTracking = AtomicBoolean(false)
     private var lastLocation: Location? = null
     private var intervalSeconds = DEFAULT_INTERVAL_SECONDS
     private var powerSaving = DEFAULT_POWER_SAVING
+    private var locationThread: Thread? = null
     
     // FusedLocationProvider
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -64,9 +69,6 @@ class LocationForegroundService : Service() {
     
     // EventChannel
     private var eventSink: EventChannel.EventSink? = null
-    
-    // 定位线程
-    private var locationThread: Thread? = null
     
     // 日期格式
     private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
@@ -116,16 +118,16 @@ class LocationForegroundService : Service() {
                 // Flutter EventChannel 重连了
                 // 如果服务被系统杀过(isTracking=false)，需要重新启动追踪
                 val sink = eventSink ?: LocationPluginBinder.getEventSink()
-                Log.d(TAG, "ACTION_NOTIFY_SINK_READY: isTracking=${isTracking.get()}, lastLocation=${lastLocation != null}, sink=${sink != null}")
+                Log.d(TAG, "ACTION_NOTIFY_SINK_READY: isTracking=${_isTrackingStatic.get()}, lastLocation=${lastLocation != null}, sink=${sink != null}")
                 if (sink == null) {
                     Log.w(TAG, "ACTION_NOTIFY_SINK_READY: sink is null, cannot send")
-                } else if (isTracking.get() && locationThread?.isAlive == true) {
+                } else if (_isTrackingStatic.get() && locationThread?.isAlive == true) {
                     // 正常情况：服务还在跑，线程还活着，立即发一次当前位置
                     lastLocation?.let { sendLocationToFlutter(it) }
                 } else {
                     // 服务被系统杀过重建了(isTracking=false)，自动重新启动追踪
                     Log.d(TAG, "ACTION_NOTIFY_SINK_READY: service was killed, auto-restarting tracking")
-                    isTracking.set(false)
+                    _isTrackingStatic.set(false)
                     locationThread?.interrupt()
                     locationThread = null
                     startTracking()
@@ -141,23 +143,23 @@ class LocationForegroundService : Service() {
      */
     private fun startTracking() {
         // 如果正在追踪且线程还活着，则忽略重复启动
-        if (isTracking.get() && locationThread?.isAlive == true) {
+        if (_isTrackingStatic.get() && locationThread?.isAlive == true) {
             Log.w(TAG, "Already tracking, ignore")
             return
         }
 
         // 线程已死但标志位未清理（例如 Flutter 进程被杀死后重启），强制重置状态
-        isTracking.set(false)
+        _isTrackingStatic.set(false)
         locationThread?.interrupt()
         locationThread = null
 
-        isTracking.set(true)
+        _isTrackingStatic.set(true)
         startForeground(NOTIFICATION_ID, buildNotification())
         
         // 在独立线程中运行定位循环
         locationThread = Thread {
             Log.d(TAG, "Location loop started")
-            while (isTracking.get()) {
+            while (_isTrackingStatic.get()) {
                 val location = requestSingleLocation()
                 if (location != null) {
                     lastLocation = location
@@ -167,7 +169,7 @@ class LocationForegroundService : Service() {
                     updateNotification()
                 }
                 
-                if (isTracking.get()) {
+                if (_isTrackingStatic.get()) {
                     // 计算实际间隔（省电模式最小60秒）
                     val actualInterval = if (powerSaving) {
                         maxOf(intervalSeconds, 60)
@@ -194,7 +196,7 @@ class LocationForegroundService : Service() {
      */
     private fun stopTracking() {
         Log.d(TAG, "stopTracking called")
-        isTracking.set(false)
+        _isTrackingStatic.set(false)
         
         locationThread?.interrupt()
         locationThread = null
@@ -377,7 +379,7 @@ class LocationForegroundService : Service() {
      * 构建通知
      */
     private fun buildNotification(): Notification {
-        val status = if (isTracking.get()) "运行中" else "已停止"
+        val status = if (_isTrackingStatic.get()) "运行中" else "已停止"
         val mode = if (powerSaving) "省电模式 ${maxOf(intervalSeconds, 60)}秒" else "精准模式 ${intervalSeconds}秒"
         val locationText = lastLocation?.let {
             String.format("位置: %.6f, %.6f", it.latitude, it.longitude)
@@ -429,7 +431,7 @@ class LocationForegroundService : Service() {
 
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
-        isTracking.set(false)
+        _isTrackingStatic.set(false)
         locationThread?.interrupt()
         super.onDestroy()
     }
@@ -445,6 +447,6 @@ class LocationForegroundService : Service() {
      * 检查服务是否运行
      */
     fun isServiceRunning(): Boolean {
-        return isTracking.get()
+        return _isTrackingStatic.get()
     }
 }
