@@ -16,6 +16,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.*
 import io.flutter.plugin.common.EventChannel
+import java.io.File
+import java.io.FileWriter
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,6 +38,7 @@ class LocationForegroundService : Service() {
         const val ACTION_START = "com.kenny.trace_path.START"
         const val ACTION_STOP = "com.kenny.trace_path.STOP"
         const val ACTION_UPDATE_CONFIG = "com.kenny.trace_path.UPDATE_CONFIG"
+        const val ACTION_NOTIFY_SINK_READY = "com.kenny.trace_path.NOTIFY_SINK_READY"
         
         // 默认值
         const val DEFAULT_INTERVAL_SECONDS = 30
@@ -67,6 +71,10 @@ class LocationForegroundService : Service() {
     // 日期格式
     private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
+    // 本地轨迹文件（Kotlin 侧兜底记录，Flutter 被杀后仍继续）
+    private val dateFormatFile = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private var trackFile: File? = null
+
     private val binder = LocalBinder()
 
     inner class LocalBinder : Binder() {
@@ -78,6 +86,7 @@ class LocationForegroundService : Service() {
         Log.d(TAG, "onCreate")
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         createNotificationChannel()
+        initTrackFile()
     }
 
     override fun onBind(intent: Intent?): IBinder {
@@ -103,6 +112,25 @@ class LocationForegroundService : Service() {
                 powerSaving = intent.getBooleanExtra("powerSaving", DEFAULT_POWER_SAVING)
                 Log.d(TAG, "Config updated: interval=${intervalSeconds}s, powerSaving=$powerSaving")
             }
+            ACTION_NOTIFY_SINK_READY -> {
+                // Flutter EventChannel 重连了
+                // 如果服务被系统杀过(isTracking=false)，需要重新启动追踪
+                val sink = eventSink ?: LocationPluginBinder.getEventSink()
+                Log.d(TAG, "ACTION_NOTIFY_SINK_READY: isTracking=${isTracking.get()}, lastLocation=${lastLocation != null}, sink=${sink != null}")
+                if (sink == null) {
+                    Log.w(TAG, "ACTION_NOTIFY_SINK_READY: sink is null, cannot send")
+                } else if (isTracking.get() && locationThread?.isAlive == true) {
+                    // 正常情况：服务还在跑，线程还活着，立即发一次当前位置
+                    lastLocation?.let { sendLocationToFlutter(it) }
+                } else {
+                    // 服务被系统杀过重建了(isTracking=false)，自动重新启动追踪
+                    Log.d(TAG, "ACTION_NOTIFY_SINK_READY: service was killed, auto-restarting tracking")
+                    isTracking.set(false)
+                    locationThread?.interrupt()
+                    locationThread = null
+                    startTracking()
+                }
+            }
         }
 
         return START_STICKY
@@ -112,11 +140,17 @@ class LocationForegroundService : Service() {
      * 开始定位追踪
      */
     private fun startTracking() {
-        if (isTracking.get()) {
+        // 如果正在追踪且线程还活着，则忽略重复启动
+        if (isTracking.get() && locationThread?.isAlive == true) {
             Log.w(TAG, "Already tracking, ignore")
             return
         }
-        
+
+        // 线程已死但标志位未清理（例如 Flutter 进程被杀死后重启），强制重置状态
+        isTracking.set(false)
+        locationThread?.interrupt()
+        locationThread = null
+
         isTracking.set(true)
         startForeground(NOTIFICATION_ID, buildNotification())
         
@@ -232,7 +266,11 @@ class LocationForegroundService : Service() {
     private fun sendLocationToFlutter(location: Location) {
         // 优先使用直接设置的 eventSink，否则使用 LocationPluginBinder
         val sink = eventSink ?: LocationPluginBinder.getEventSink()
-        sink ?: return
+        if (sink == null) {
+            Log.w(TAG, "sendLocationToFlutter: sink is null, event dropped! lat=${location.latitude}, lng=${location.longitude}")
+            return
+        }
+        Log.d(TAG, "sendLocationToFlutter: sink available, sending lat=${location.latitude}, lng=${location.longitude}")
         
         val locationMap = HashMap<String, Any>()
         locationMap["latitude"] = location.latitude
@@ -250,6 +288,61 @@ class LocationForegroundService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error sending location to Flutter", e)
+        }
+
+        // Kotlin 侧兜底记录（Flutter 被杀后仍继续记录）
+        saveLocationToFile(location)
+    }
+
+    /**
+     * 初始化轨迹文件（按天分文件，CSV 格式）
+     */
+    private fun initTrackFile() {
+        try {
+            val trackDir = File(filesDir, "location_tracks")
+            if (!trackDir.exists()) trackDir.mkdirs()
+            val dateStr = dateFormatFile.format(Date())
+            trackFile = File(trackDir, "track_$dateStr.csv")
+
+            // 如果文件不存在，写入 CSV 表头
+            if (!trackFile!!.exists()) {
+                FileWriter(trackFile, true).use { writer ->
+                    writer.append("timestamp,latitude,longitude,accuracy,altitude,speed\n")
+                }
+            }
+            Log.d(TAG, "Track file initialized: ${trackFile!!.absolutePath}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to init track file", e)
+        }
+    }
+
+    /**
+     * 保存位置到本地文件（Kotlin 侧兜底记录，Flutter 被杀后仍继续）
+     * 格式：timestamp,latitude,longitude,accuracy,altitude,speed
+     */
+    private fun saveLocationToFile(location: Location) {
+        try {
+            if (trackFile == null) {
+                initTrackFile()
+            }
+
+            val timestamp = location.time
+            val latitude = location.latitude
+            val longitude = location.longitude
+            val accuracy = location.accuracy.toDouble()
+            val altitude = if (location.hasAltitude()) location.altitude else 0.0
+            val speed = if (location.hasSpeed()) location.speed.toDouble() else 0.0
+
+            val line = "$timestamp,$latitude,$longitude,$accuracy,$altitude,$speed\n"
+
+            FileWriter(trackFile, true).use { writer ->
+                writer.append(line)
+            }
+            Log.d(TAG, "Location saved to file: lat=$latitude, lng=$longitude")
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to save location to file", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save location to file", e)
         }
     }
 

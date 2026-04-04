@@ -1,7 +1,6 @@
 package com.kenny.trace_path
 
 import android.app.ActivityManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -12,7 +11,7 @@ import io.flutter.plugin.common.MethodChannel
 
 /**
  * 定位服务 MethodChannel 处理器
- * 
+ *
  * 处理来自 Flutter 的服务控制命令：
  * - startLocationService: 启动服务
  * - stopLocationService: 停止服务
@@ -23,11 +22,10 @@ class LocationPlugin(private val context: Context) {
 
     companion object {
         private const val TAG = "LocationPlugin"
-        
+
         const val METHOD_CHANNEL_NAME = "com.kenny.trace_path/location_service"
         const val EVENT_CHANNEL_NAME = "com.kenny.trace_path/location_events"
-        
-        // 默认值
+
         const val DEFAULT_INTERVAL = 30
         const val DEFAULT_POWER_SAVING = false
     }
@@ -36,33 +34,32 @@ class LocationPlugin(private val context: Context) {
     private var methodChannel: MethodChannel? = null
     private var eventSink: EventChannel.EventSink? = null
     private var serviceIntent: Intent? = null
+    private var streamHandler: EventChannel.StreamHandler? = null
 
     /**
      * 注册插件到 FlutterEngine
      */
     fun registerWith(flutterEngine: FlutterEngine) {
-        // 设置 EventChannel
-        eventChannel = EventChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            EVENT_CHANNEL_NAME
-        )
-        eventChannel?.setStreamHandler(object : EventChannel.StreamHandler {
+        streamHandler = object : EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                Log.d(TAG, "EventChannel onListen")
+                Log.d(TAG, "EventChannel onListen: sink=${events != null}")
                 eventSink = events
-                
-                // 将 sink 传递给服务
                 LocationPluginBinder.setEventSink(events)
             }
 
             override fun onCancel(arguments: Any?) {
-                Log.d(TAG, "EventChannel onCancel")
+                Log.d(TAG, "EventChannel onCancel: eventSink will be null")
                 eventSink = null
                 LocationPluginBinder.setEventSink(null)
             }
-        })
+        }
 
-        // 设置 MethodChannel
+        eventChannel = EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            EVENT_CHANNEL_NAME
+        )
+        eventChannel?.setStreamHandler(streamHandler)
+
         methodChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             METHOD_CHANNEL_NAME
@@ -71,7 +68,34 @@ class LocationPlugin(private val context: Context) {
             handleMethodCall(call, result)
         }
 
+        // Flutter 重启后，之前启动的 LocationForegroundService 还在运行
+        // 通知服务：EventChannel 已重新连接，立即发送一次当前位置
+        notifyServiceEventSinkReady()
+
         Log.d(TAG, "LocationPlugin registered")
+    }
+
+    /**
+     * 通知 LocationForegroundService：EventChannel 已就绪
+     * 用于 Flutter 重启后恢复位置推送
+     */
+    private fun notifyServiceEventSinkReady() {
+        try {
+            val intent = Intent(context, LocationForegroundService::class.java).apply {
+                action = LocationForegroundService.ACTION_NOTIFY_SINK_READY
+            }
+            context.startService(intent)
+            Log.d(TAG, "notifyServiceEventSinkReady sent")
+        } catch (e: Exception) {
+            Log.e(TAG, "notifyServiceEventSinkReady failed", e)
+        }
+    }
+
+    /**
+     * 获取 EventChannel StreamHandler（供 MainActivity 使用）
+     */
+    fun getEventStreamHandler(): EventChannel.StreamHandler {
+        return streamHandler!!
     }
 
     /**
@@ -81,47 +105,26 @@ class LocationPlugin(private val context: Context) {
         Log.d(TAG, "handleMethodCall: method=${call.method}, args=${call.arguments}")
 
         when (call.method) {
-            "startLocationService" -> {
+            "startLocationService", "start" -> {
                 val interval = call.argument<Int>("interval") ?: DEFAULT_INTERVAL
                 val powerSaving = call.argument<Boolean>("powerSaving") ?: DEFAULT_POWER_SAVING
                 startLocationService(interval, powerSaving, result)
             }
-            
-            "stopLocationService" -> {
+
+            "stopLocationService", "stop" -> {
                 stopLocationService(result)
             }
-            
-            "updateLocationConfig" -> {
+
+            "updateLocationConfig", "updateConfig" -> {
                 val interval = call.argument<Int>("interval") ?: DEFAULT_INTERVAL
                 val powerSaving = call.argument<Boolean>("powerSaving") ?: DEFAULT_POWER_SAVING
                 updateLocationConfig(interval, powerSaving, result)
             }
-            
-            "isLocationServiceRunning" -> {
+
+            "isLocationServiceRunning", "isRunning" -> {
                 result.success(isLocationServiceRunning())
             }
-            
-            // 以下是兼容旧版 Flutter 代码的方法名
-            "start" -> {
-                val interval = call.argument<Int>("interval") ?: DEFAULT_INTERVAL
-                val powerSaving = call.argument<Boolean>("powerSaving") ?: DEFAULT_POWER_SAVING
-                startLocationService(interval, powerSaving, result)
-            }
-            
-            "stop" -> {
-                stopLocationService(result)
-            }
-            
-            "updateConfig" -> {
-                val interval = call.argument<Int>("interval") ?: DEFAULT_INTERVAL
-                val powerSaving = call.argument<Boolean>("powerSaving") ?: DEFAULT_POWER_SAVING
-                updateLocationConfig(interval, powerSaving, result)
-            }
-            
-            "isRunning" -> {
-                result.success(isLocationServiceRunning())
-            }
-            
+
             else -> {
                 result.notImplemented()
             }
@@ -131,22 +134,22 @@ class LocationPlugin(private val context: Context) {
     /**
      * 启动定位服务
      */
-    private fun startLocationService(interval: Int, powerSaving: Boolean, result: MethodChannel.Result) {
+    fun startLocationService(interval: Int, powerSaving: Boolean, result: MethodChannel.Result) {
         Log.d(TAG, "startLocationService: interval=${interval}s, powerSaving=$powerSaving")
-        
+
         try {
             serviceIntent = Intent(context, LocationForegroundService::class.java).apply {
                 action = LocationForegroundService.ACTION_START
                 putExtra("interval", interval)
                 putExtra("powerSaving", powerSaving)
             }
-            
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent!!)
             } else {
                 context.startService(serviceIntent!!)
             }
-            
+
             result.success(true)
         } catch (e: Exception) {
             Log.e(TAG, "startLocationService failed", e)
@@ -157,9 +160,9 @@ class LocationPlugin(private val context: Context) {
     /**
      * 停止定位服务
      */
-    private fun stopLocationService(result: MethodChannel.Result) {
+    fun stopLocationService(result: MethodChannel.Result) {
         Log.d(TAG, "stopLocationService")
-        
+
         try {
             serviceIntent = Intent(context, LocationForegroundService::class.java).apply {
                 action = LocationForegroundService.ACTION_STOP
@@ -175,9 +178,9 @@ class LocationPlugin(private val context: Context) {
     /**
      * 更新配置
      */
-    private fun updateLocationConfig(interval: Int, powerSaving: Boolean, result: MethodChannel.Result) {
+    fun updateLocationConfig(interval: Int, powerSaving: Boolean, result: MethodChannel.Result) {
         Log.d(TAG, "updateLocationConfig: interval=${interval}s, powerSaving=$powerSaving")
-        
+
         try {
             serviceIntent = Intent(context, LocationForegroundService::class.java).apply {
                 action = LocationForegroundService.ACTION_UPDATE_CONFIG
@@ -195,7 +198,7 @@ class LocationPlugin(private val context: Context) {
     /**
      * 检查服务是否运行
      */
-    private fun isLocationServiceRunning(): Boolean {
+    fun isLocationServiceRunning(): Boolean {
         try {
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             for (service in am.getRunningServices(Integer.MAX_VALUE)) {
@@ -228,11 +231,11 @@ class LocationPlugin(private val context: Context) {
  */
 object LocationPluginBinder {
     private var eventSink: EventChannel.EventSink? = null
-    
+
     fun setEventSink(sink: EventChannel.EventSink?) {
         eventSink = sink
     }
-    
+
     fun getEventSink(): EventChannel.EventSink? {
         return eventSink
     }

@@ -67,10 +67,129 @@ class BackgroundLocationService {
 
   // ========== 初始化 ==========
   Future<void> init() async {
+    print('[BackgroundLocationService] ★★★ init() START ★★★');
     await _settingsService.load();
     await _errorLogger.init();
     await _errorLogger.logService(action: 'INIT');
     _initLocationProvider();
+    print('[BackgroundLocationService] init: _initLocationProvider done');
+
+    // 尝试从 Kotlin 侧恢复断线期间的轨迹数据
+    print('[BackgroundLocationService] init: calling _recoverKotlinTrackData...');
+    await _recoverKotlinTrackData();
+    print('[BackgroundLocationService] init: _recoverKotlinTrackData done');
+
+    // 主动请求一次当前位置（Flutter 重连后，立即在地图上显示当前位置）
+    print('[BackgroundLocationService] init: calling _requestAndBroadcastCurrentLocation...');
+    await _requestAndBroadcastCurrentLocation();
+    print('[BackgroundLocationService] init: _requestAndBroadcastCurrentLocation done');
+
+    // 注册 EventChannel 监听（Flutter 启动时就注册，不管服务有没有启动）
+    print('[BackgroundLocationService] init: calling _listenToLocationEvents...');
+    _listenToLocationEvents();
+    print('[BackgroundLocationService] ★★★ init() END ★★★');
+  }
+
+  /// 主动请求当前位置并广播到地图（Flutter 重连后恢复实时显示）
+  Future<void> _requestAndBroadcastCurrentLocation() async {
+    try {
+      print('[BackgroundLocationService] ★★★ _requestAndBroadcastCurrentLocation called ★★★');
+      print('[BackgroundLocationService]   _locationProvider=${_locationProvider.runtimeType}');
+      final position = await _locationProvider?.getCurrentPosition();
+      if (position != null) {
+        _broadcast(LocationEvent.position(position));
+        _saveToLocal(position);
+        print('[BackgroundLocationService] ★ 主动请求位置成功: lat=${position.latitude}, lng=${position.longitude}');
+      } else {
+        print('[BackgroundLocationService] 主动请求位置返回 null');
+      }
+    } catch (e, s) {
+      print('[BackgroundLocationService] 主动请求位置失败: $e stack=$s');
+    }
+  }
+
+  /// 获取 Android filesDir 路径
+  Future<String?> _getFilesDir() async {
+    try {
+      final result = await _methodChannel.invokeMethod<String>('getFilesDir');
+      return result;
+    } catch (e) {
+      print('[BackgroundLocationService] getFilesDir 失败: $e');
+      return null;
+    }
+  }
+
+  /// 从 Kotlin 的 CSV 文件恢复轨迹数据
+  /// Kotlin 在 Flutter 被杀期间会持续写入 filesDir/location_tracks/track_YYYY-MM-DD.csv
+  Future<void> _recoverKotlinTrackData() async {
+    try {
+      final filesDir = await _getFilesDir();
+      if (filesDir == null) return;
+
+      final trackDir = Directory('$filesDir/location_tracks');
+      if (!await trackDir.exists()) {
+        print('[BackgroundLocationService] Kotlin 轨迹目录不存在，跳过恢复');
+        return;
+      }
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      // 只读取今天的 Kotlin 文件（避免读取历史垃圾数据）
+      final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      final kotlinFile = File('${trackDir.path}/track_$dateStr.csv');
+
+      if (!await kotlinFile.exists()) {
+        print('[BackgroundLocationService] Kotlin 今日轨迹文件不存在: track_$dateStr.csv');
+        return;
+      }
+
+      final lines = await kotlinFile.readAsLines();
+      if (lines.length <= 1) return; // 只有表头
+
+      int recoveredCount = 0;
+      for (int i = 1; i < lines.length; i++) {
+        final line = lines[i].trim();
+        if (line.isEmpty) continue;
+
+        final parts = line.split(',');
+        if (parts.length < 6) continue;
+
+        try {
+          final timestamp = int.parse(parts[0]);
+          final latitude = double.parse(parts[1]);
+          final longitude = double.parse(parts[2]);
+          final accuracy = double.parse(parts[3]);
+          final altitude = double.parse(parts[4]);
+          final speed = double.parse(parts[5]);
+
+          final position = Position(
+            latitude: latitude,
+            longitude: longitude,
+            timestamp: DateTime.fromMillisecondsSinceEpoch(timestamp),
+            accuracy: accuracy,
+            altitude: altitude,
+            speed: speed,
+            heading: 0,
+            altitudeAccuracy: 0,
+            headingAccuracy: 0,
+            speedAccuracy: 0,
+          );
+
+          await TrackRecorder().record(position);
+          recoveredCount++;
+        } catch (e) {
+          // 解析失败跳过
+        }
+      }
+
+      if (recoveredCount > 0) {
+        print('[BackgroundLocationService] 从 Kotlin 侧恢复了 $recoveredCount 个轨迹点');
+        await _errorLogger.logService(action: 'KOTLIN_TRACK_RECOVERED', extra: 'count=$recoveredCount');
+      }
+    } catch (e) {
+      print('[BackgroundLocationService] 恢复 Kotlin 轨迹数据失败: $e');
+    }
   }
 
   void _initLocationProvider() {
@@ -226,9 +345,11 @@ class BackgroundLocationService {
   // ========== EventChannel 监听 ==========
   /// 监听原生服务推送的位置
   void _listenToLocationEvents() {
+    print('[BackgroundLocationService] ★★★ _listenToLocationEvents called ★★★');
     _eventSubscription?.cancel();
     _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
       (dynamic event) {
+        print('[BackgroundLocationService] EventChannel received event: ${event.runtimeType}');
         _handleLocationEvent(event);
       },
       onError: (dynamic error) {
@@ -241,6 +362,8 @@ class BackgroundLocationService {
 
   /// 处理原生服务推送的位置
   void _handleLocationEvent(dynamic event) {
+    print('[BackgroundLocationService] ★★★ _handleLocationEvent called ★★★ event=${event.runtimeType}: $event');
+
     if (event is! Map) {
       print('[BackgroundLocationService] Invalid event type: ${event.runtimeType}');
       return;
@@ -259,7 +382,7 @@ class BackgroundLocationService {
         return;
       }
 
-      print('[BackgroundLocationService] 收到位置: lat=$latitude, lng=$longitude, acc=$accuracy');
+      print('[BackgroundLocationService] ★ 收到EventChannel位置: lat=$latitude, lng=$longitude, acc=$accuracy');
 
       // 构造 Position 对象
       final position = Position(
