@@ -32,6 +32,13 @@ class BackgroundLocationService {
   final UserService _userService = UserService();
   final ErrorLoggerService _errorLogger = ErrorLoggerService();
 
+  /// 统一日志方法：同时输出到logcat和文件
+  void log(String msg) {
+    final timestamp = DateTime.now().toString().substring(11, 23);
+    print('[$timestamp] [BackgroundLocationService] $msg');
+    _errorLogger.logDebug(msg);
+  }
+
   // ========== 定位提供者（工厂模式）==========
   LocationProvider? _locationProvider;
   bool _useNativeLocation = false; // 默认使用 Geolocator（调试：临时改回 Geolocator）
@@ -261,21 +268,21 @@ class BackgroundLocationService {
     print('[BackgroundLocationService] 调度下次定位，_intervalSeconds=${_intervalSeconds}s, actualInterval=${actualInterval}s, _powerSaving=${_powerSaving}');
 
     _locationTimer = Timer(Duration(seconds: actualInterval), () async {
-      print('[BackgroundLocationService] >>>>> 定时器触发！isTracking=$_isTracking');
+      log('>>>>>> 定时器触发！isTracking=$_isTracking');
       if (!_isTracking) {
         print('[BackgroundLocationService] 定时器回调结束: _isTracking=false');
         return;
       }
-      print('[BackgroundLocationService] 调用 getCurrentPosition...');
+      log('调用 getCurrentPosition...');
 
       final success = await _fetchAndBroadcastLocation();
-      print('[BackgroundLocationService] getCurrentPosition 返回: success=$success');
+      log('getCurrentPosition 返回: success=$success');
       // 成功后继续调度；失败时由 _fetchAndBroadcastLocation 内部调度了GPS重试
       if (success) {
-        print('[BackgroundLocationService] 定位成功，调度下次');
+        log('定位成功，调度下次');
         _scheduleNextLocation();
       } else {
-        print('[BackgroundLocationService] 定位失败，等待重试或下次定时');
+        log('定位失败，等待重试或下次定时');
       }
       print('[BackgroundLocationService] <<<<< 定时器回调结束');
     });
@@ -344,13 +351,13 @@ class BackgroundLocationService {
       extra: params.join(' '),
     );
 
-    print('[BackgroundLocationService] _fetchAndBroadcastLocation 调用 getCurrentPosition()...');
+    log('_fetchAndBroadcastLocation 调用 getCurrentPosition()...');
     final position = await getCurrentPosition();
-    print('[BackgroundLocationService] _fetchAndBroadcastLocation getCurrentPosition 返回: ${position != null ? '成功' : '失败/null'}');
+    log('_fetchAndBroadcastLocation getCurrentPosition 返回: ${position != null ? '成功' : '失败/null'}');
     if (position != null) {
       _successCount++;
 
-      print('[BackgroundLocationService] 定位成功: lat=${position.latitude}, lng=${position.longitude}, acc=${position.accuracy}m');
+      log('定位成功: lat=${position.latitude}, lng=${position.longitude}, acc=${position.accuracy}m');
       _broadcast(LocationEvent.position(position));
 
       // 首次定位记录

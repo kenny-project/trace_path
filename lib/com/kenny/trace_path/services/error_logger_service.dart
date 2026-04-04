@@ -11,7 +11,8 @@ enum ErrorTag {
   service('[SERVICE]'),
   crash('[CRASH]'),
   other('[OTHER]'),
-  app('[APP]');
+  app('[APP]'),
+  debug('[DEBUG]');
 
   final String label;
   const ErrorTag(this.label);
@@ -199,6 +200,11 @@ class ErrorLoggerService {
     if (extra != null) msg += ' $extra';
     
     await log(ErrorTag.service, msg);
+  }
+
+  /// 通用调试日志（所有print输出都走这里）
+  Future<void> logDebug(String message) async {
+    await log(ErrorTag.debug, message);
   }
 
   /// 读取当前日志文件内容

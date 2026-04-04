@@ -15,6 +15,13 @@ class NativeLocationProvider implements LocationProvider {
 
   final ErrorLoggerService _errorLogger = ErrorLoggerService();
 
+  /// 统一日志方法：同时输出到logcat和文件
+  void log(String msg) {
+    final timestamp = DateTime.now().toString().substring(11, 23);
+    print('[$timestamp] [NativeLocationProvider] $msg');
+    _errorLogger.logDebug(msg);
+  }
+
   // 默认超时时间：GPS 30秒 + 网络15秒 = 总共45秒
   static const int _defaultGpsTimeoutMs = 30000;
   static const int _defaultNetTimeoutMs = 15000;
@@ -46,7 +53,7 @@ class NativeLocationProvider implements LocationProvider {
       final timeoutMs = (timeLimit?.inMilliseconds ?? (_defaultGpsTimeoutMs + _defaultNetTimeoutMs)).toInt();
       final useHighAccuracy = accuracy == ProviderAccuracy.best;
 
-      print('[NativeLocationProvider] 调用原生定位: useHighAccuracy=$useHighAccuracy, timeout=${timeoutMs}ms');
+      log('调用原生定位: useHighAccuracy=$useHighAccuracy, timeout=${timeoutMs}ms');
       await _errorLogger.logService(
         action: 'NATIVE_LOCATION_REQUEST',
         extra: 'useHighAccuracy=$useHighAccuracy, timeoutMs=$timeoutMs',
@@ -61,7 +68,7 @@ class NativeLocationProvider implements LocationProvider {
       );
 
       if (result == null) {
-        print('[NativeLocationProvider] 原生定位返回 null');
+        log('原生定位返回 null');
         await _errorLogger.logGpsFail(reason: 'NATIVE_RETURNED_NULL');
         return null;
       }
@@ -76,7 +83,7 @@ class NativeLocationProvider implements LocationProvider {
       final timestamp = (result['timestamp'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch;
 
       if (latitude == null || longitude == null) {
-        print('[NativeLocationProvider] 原生定位返回无效坐标: lat=$latitude, lng=$longitude');
+        log('原生定位返回无效坐标: lat=$latitude, lng=$longitude');
         await _errorLogger.logGpsFail(reason: 'INVALID_COORDINATES');
         return null;
       }
@@ -95,7 +102,7 @@ class NativeLocationProvider implements LocationProvider {
         headingAccuracy: 0.0, // Android 原生不提供
       );
 
-      print('[NativeLocationProvider] 原生定位成功: lat=$latitude, lng=$longitude, acc=${accuracyVal}m');
+      log('原生定位成功: lat=$latitude, lng=$longitude, acc=${accuracyVal}m');
       await _errorLogger.logGpsSuccess(
         lat: latitude,
         lng: longitude,
