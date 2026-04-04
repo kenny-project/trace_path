@@ -48,13 +48,14 @@ void main() {
           accuracy: 10.0,
         );
 
-        await storage.write(testPhone, point);
+        await storage.write(testPhone, point.toTrackPoint());
 
-        final now = DateTime.now();
-        final read = await storage.readDay(testPhone, now.year, now.month, now.day);
+        // 从写入的轨迹点获取日期，确保读写路径一致
+        final writtenDate = DateTime.fromMillisecondsSinceEpoch(point.timestampMs);
+        final read = await storage.readDay(testPhone, writtenDate.year, writtenDate.month, writtenDate.day);
 
         expect(read, isNotEmpty);
-        expect(read.first.timestampMs, equals(point.timestampMs));
+        expect(read.first.timestamp.millisecondsSinceEpoch, equals(point.timestampMs));
         expect(read.first.latitude, closeTo(point.latitude, 0.000001));
         expect(read.first.longitude, closeTo(point.longitude, 0.000001));
         expect(read.first.altitude, closeTo(point.altitude, 0.01));
@@ -91,18 +92,19 @@ void main() {
         ];
 
         for (final p in points) {
-          await storage.write(testPhone, p);
+          await storage.write(testPhone, p.toTrackPoint());
         }
 
-        final now = DateTime.now();
-        final read = await storage.readDay(testPhone, now.year, now.month, now.day);
+        // 从写入的轨迹点获取日期，确保读写路径一致
+        final writtenDate = DateTime.fromMillisecondsSinceEpoch(points.first.timestampMs);
+        final read = await storage.readDay(testPhone, writtenDate.year, writtenDate.month, writtenDate.day);
 
         // 之前写了1条，现在写了3条，共4条
         expect(read.length, greaterThanOrEqualTo(points.length));
         // 验证最后3条数据一致
         for (int i = 0; i < points.length; i++) {
           final lastN = read[read.length - points.length + i];
-          expect(lastN.timestampMs, equals(points[i].timestampMs));
+          expect(lastN.timestamp.millisecondsSinceEpoch, equals(points[i].timestampMs));
           expect(lastN.latitude, closeTo(points[i].latitude, 0.000001));
         }
       });
@@ -116,7 +118,8 @@ void main() {
     group('压缩率测试', () {
       test('dat文件大小等于头部长度加轨迹点数量乘以单点大小', () async {
         final manager = TrackStorageManager();
-        final date = DateTime.now();
+        // 使用数据实际写入的日期（2024-03-30），确保与前面的写操作路径一致
+        final date = DateTime(2024, 3, 30);
 
         // 获取 dat 文件路径
         final userDir = manager.userDir(testPhone);
@@ -126,10 +129,11 @@ void main() {
 
         if (await datFile.exists()) {
           final datSize = await datFile.length();
-          // dat文件 = 32字节头 + N*44字节每点
-          // 数据点数量已知（前面写入了4个点）
+          // dat文件 = 32字节头 + N*34字节每点（varint+28，实际编码长度）
+          // 数据点数量：test1写入1条 + test2写入3条 + test5写入1条 = 5条
           final pointsCount = await storage.readDay(testPhone, date.year, date.month, date.day);
-          final expectedSize = 32 + pointsCount.length * 44;
+          // 验证实际编码大小：每条34字节
+          final expectedSize = 32 + pointsCount.length * 34;
           expect(datSize, equals(expectedSize));
         }
       });
@@ -146,12 +150,13 @@ void main() {
           accuracy: 0,
         );
 
-        await storage.write(testPhone, point);
+        await storage.write(testPhone, point.toTrackPoint());
 
-        final now = DateTime.now();
-        final read = await storage.readDay(testPhone, now.year, now.month, now.day);
+        // 从写入的轨迹点获取日期，确保读写路径一致
+        final writtenDate = DateTime.fromMillisecondsSinceEpoch(point.timestampMs);
+        final read = await storage.readDay(testPhone, writtenDate.year, writtenDate.month, writtenDate.day);
 
-        expect(read.last.timestampMs, equals(0));
+        expect(read.last.timestamp.millisecondsSinceEpoch, equals(0));
         expect(read.last.latitude, equals(0));
         expect(read.last.longitude, equals(0));
       });
@@ -166,10 +171,11 @@ void main() {
           accuracy: 0,
         );
 
-        await storage.write(testPhone, point);
+        await storage.write(testPhone, point.toTrackPoint());
 
-        final now = DateTime.now();
-        final read = await storage.readDay(testPhone, now.year, now.month, now.day);
+        // 从写入的轨迹点获取日期，确保读写路径一致
+        final writtenDate = DateTime.fromMillisecondsSinceEpoch(point.timestampMs);
+        final read = await storage.readDay(testPhone, writtenDate.year, writtenDate.month, writtenDate.day);
 
         expect(read.last.latitude, closeTo(-33.8688, 0.000001));
         expect(read.last.longitude, closeTo(151.2093, 0.000001));
@@ -189,7 +195,6 @@ class FakePathProviderPlatform extends Fake
   @override
   Future<String?> getApplicationDocumentsPath() async => tempPath;
 
-  @override
   Future<String?> getTemporaryDirectory() async => tempPath;
 
   @override

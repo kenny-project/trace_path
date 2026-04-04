@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'user_service.dart';
 import 'track_storage_manager.dart';
+import 'compressed_track_storage.dart';
 
 /// 轨迹点数据
 class TrackPoint {
@@ -281,7 +282,8 @@ class TrackRecorder {
   factory TrackRecorder() => _instance;
   TrackRecorder._();
 
-  TrackStorage _storage = LocalCsvStorage();
+  // 默认使用压缩存储
+  TrackStorage _storage = CompressedTrackStorage();
 
   /// 设置存储实现（支持切换存储方式）
   void setStorage(TrackStorage storage) {

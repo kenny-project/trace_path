@@ -46,9 +46,8 @@ dependencies:
   path_provider: ^2.1.0
   permission_handler: ^11.0.0
   csv: ^6.0.0
-  fluttertoast: ^8.2.2
+  fluttertoast: 8.2.14
   file_picker: ^8.0.0
-  share_plus: ^9.0.0
 
 dev_dependencies:
   flutter_test:

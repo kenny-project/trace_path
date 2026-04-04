@@ -16,8 +16,8 @@ void main() {
         accuracy: 10.0,
       );
 
-      final encoded = original.encode();
-      final decoded = TrackPointMessage.decode(encoded, 0);
+      final (encoded, _) = original.encode();
+      final (decoded, _) = TrackPointMessage.decode(encoded, 0);
 
       expect(decoded, isNotNull);
       expect(decoded!.timestampMs, equals(original.timestampMs));
@@ -28,7 +28,7 @@ void main() {
       expect(decoded.accuracy, equals(original.accuracy));
     });
 
-    test('编码后字节数组长度固定为44字节', () {
+    test('编码后字节数组长度正确（非固定44，实际为varint+28）', () {
       final point = TrackPointMessage(
         timestampMs: 1711785600000,
         latitude: 39.908823,
@@ -38,20 +38,22 @@ void main() {
         accuracy: 10.0,
       );
 
-      final encoded = point.encode();
-      expect(encoded.length, equals(44));
-      expect(point.encodedSize, equals(44));
+      final (encoded, actualSize) = point.encode();
+      // timestamp 1711785600000 varint=6字节，总长度=6+28=34
+      expect(encoded.length, equals(34));
+      expect(actualSize, equals(34));
+      expect(point.encodedSize, equals(44)); // encodedSize为估算值（历史兼容）
     });
 
     test('解码超出边界范围时返回null', () {
-      final data = Uint8List(10); // 太小，无法容纳44字节
-      final decoded = TrackPointMessage.decode(data, 0);
+      final data = Uint8List(10); // 太小，无法容纳完整点
+      final (decoded, _) = TrackPointMessage.decode(data, 0);
       expect(decoded, isNull);
     });
 
     test('解码偏移量超过数据长度时返回null', () {
       final data = Uint8List(100);
-      final decoded = TrackPointMessage.decode(data, 200);
+      final (decoded, _) = TrackPointMessage.decode(data, 200);
       expect(decoded, isNull);
     });
 
@@ -65,8 +67,8 @@ void main() {
         accuracy: 0,
       );
 
-      final encoded = original.encode();
-      final decoded = TrackPointMessage.decode(encoded, 0);
+      final (encoded, _) = original.encode();
+      final (decoded, _) = TrackPointMessage.decode(encoded, 0);
 
       expect(decoded, isNotNull);
       expect(decoded!.timestampMs, equals(0));
@@ -96,8 +98,8 @@ void main() {
         accuracy: 5.0,
       );
 
-      final encoded1 = fromConstructor.encode();
-      final encoded2 = fromFactory.encode();
+      final (encoded1, _) = fromConstructor.encode();
+      final (encoded2, _) = fromFactory.encode();
 
       expect(encoded1.length, equals(encoded2.length));
       for (int i = 0; i < encoded1.length; i++) {
@@ -116,8 +118,8 @@ void main() {
         accuracy: 0,
       );
 
-      final encoded = original.encode();
-      final decoded = TrackPointMessage.decode(encoded, 0);
+      final (encoded, _) = original.encode();
+      final (decoded, _) = TrackPointMessage.decode(encoded, 0);
 
       expect(decoded, isNotNull);
       expect(decoded!.timestampMs, equals(original.timestampMs));
@@ -133,13 +135,14 @@ void main() {
         accuracy: 10.0,
       );
 
+      final (pointEncoded, _) = point.encode();
       final paddingBefore = Uint8List(16);
       final paddingAfter = Uint8List(8);
-      final combined = Uint8List(paddingBefore.length + 44 + paddingAfter.length);
+      final combined = Uint8List(paddingBefore.length + pointEncoded.length + paddingAfter.length);
 
-      combined.setRange(paddingBefore.length, paddingBefore.length + 44, point.encode());
+      combined.setRange(paddingBefore.length, paddingBefore.length + pointEncoded.length, pointEncoded);
 
-      final decoded = TrackPointMessage.decode(combined, paddingBefore.length);
+      final (decoded, _) = TrackPointMessage.decode(combined, paddingBefore.length);
 
       expect(decoded, isNotNull);
       expect(decoded!.timestampMs, equals(point.timestampMs));

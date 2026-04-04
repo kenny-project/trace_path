@@ -8,6 +8,7 @@ import '../../../services/csv_storage_service.dart';
 import '../../../widgets/location_settings_dialog.dart';
 import 'permission_settings_page.dart';
 import 'login_page.dart';
+import 'log_viewer_page.dart';
 import 'package:trace_path/constants/strings.dart';
 import 'package:trace_path/constants/mine_strings.dart' as ms;
 
@@ -70,37 +71,7 @@ class _MinePageState extends State<MinePage> {
     );
   }
 
-  /// 导入轨迹
-  Future<void> _importTrack() async {
-    final count = await _csvService.importDayTrack();
-    if (count == 0) {
-      _showToast('已取消导入');
-    } else if (count > 0) {
-      _showToast('导入成功: $count 条记录');
-    } else {
-      _showToast('导入失败');
-    }
-  }
 
-  /// 导出轨迹（弹出日期选择）
-  Future<void> _exportTrack() async {
-    final now = DateTime.now();
-    final selected = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: DateTime(2020),
-      lastDate: now,
-      helpText: '选择要导出的日期',
-    );
-
-    if (selected == null) return;
-
-    final dateStr = '${selected.year}-${selected.month.toString().padLeft(2, '0')}-${selected.day.toString().padLeft(2, '0')}';
-    final success = await _csvService.exportDayTrack(dateStr);
-    if (!success) {
-      _showToast('导出失败: $dateStr 无轨迹数据');
-    }
-  }
 
   static const Color primaryGreen = AppColors.primary;
   static const Color logoutRed = AppColors.logoutRed;
@@ -145,21 +116,22 @@ class _MinePageState extends State<MinePage> {
               ),
               const Divider(height: 1, color: dividerColor, indent: 56),
               _buildMenuItem(
+                icon: Icons.article,
+                label: '查看日志',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const LogViewerPage(),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1, color: dividerColor, indent: 56),
+              _buildMenuItem(
                 icon: Icons.info,
                 label: ms.MineStrings.aboutUs,
                 onTap: () {},
-              ),
-              const Divider(height: 1, color: dividerColor, indent: 56),
-              _buildMenuItem(
-                icon: Icons.file_upload,
-                label: '导入轨迹',
-                onTap: _importTrack,
-              ),
-              const Divider(height: 1, color: dividerColor, indent: 56),
-              _buildMenuItem(
-                icon: Icons.file_download,
-                label: '导出轨迹',
-                onTap: _exportTrack,
               ),
               const SizedBox(height: 16),
               const Divider(height: 1, color: dividerColor),

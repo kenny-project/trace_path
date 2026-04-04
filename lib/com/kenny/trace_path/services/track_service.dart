@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
 import 'track_recorder.dart';
 import 'track_storage_manager.dart';
@@ -24,14 +25,8 @@ class TrackService {
   /// 删除指定日期的轨迹文件
   Future<bool> deleteDayTrack(String phoneNumber, int year, int month, int day) async {
     try {
-      final filePath = _manager.dayFilePathByYMD(phoneNumber, year, month, day);
-      final file = File(filePath);
-      if (await file.exists()) {
-        await file.delete();
-        print('[TrackService] 已删除: $filePath');
-        return true;
-      }
-      return false;
+      await TrackRecorder().deleteDay(phoneNumber, year, month, day);
+      return true;
     } catch (e) {
       print('[TrackService] 删除失败: $e');
       return false;
@@ -49,31 +44,20 @@ class TrackService {
   }) async {
     try {
       final now = DateTime.now();
-      final filePath = _manager.dayFilePath(phoneNumber, now);
-      final file = File(filePath);
-
-      // 确保目录存在
-      final dir = file.parent;
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-
-      // 检查是否需要添加表头（文件不存在或为空）
-      bool needsHeader = !await file.exists() || await file.length() == 0;
-
-      // 构建CSV行
-      final timestamp = now.toIso8601String();
-      final dataRow = '$timestamp,${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)},${altitude.toStringAsFixed(2)},${speed.toStringAsFixed(2)},${accuracy.toStringAsFixed(1)}';
-
-      String content = '';
-      if (needsHeader) {
-        content = 'timestamp,latitude,longitude,altitude,speed,accuracy\n$dataRow\n';
-      } else {
-        content = '$dataRow\n';
-      }
-
-      await file.writeAsString(content, mode: FileMode.append);
-      print('[TrackService] 保存成功: $dataRow');
+      // 通过 TrackRecorder 保存（现在是 CompressedTrackStorage）
+      await TrackRecorder().record(Position(
+        latitude: lat,
+        longitude: lng,
+        altitude: altitude,
+        speed: speed,
+        accuracy: accuracy,
+        timestamp: now,
+        heading: 0,
+        headingAccuracy: 0,
+        altitudeAccuracy: 0,
+        speedAccuracy: 0,
+      ));
+      print('[TrackService] 保存成功: lat=$lat, lng=$lng');
       return true;
     } catch (e) {
       print('[TrackService] 保存失败: $e');
@@ -84,51 +68,14 @@ class TrackService {
   /// 读取指定日期的轨迹数据
   Future<List<TrackPoint>> readDayTrack(String phoneNumber, int year, int month, int day) async {
     try {
-      final fullPath = _manager.dayFilePathByYMD(phoneNumber, year, month, day);
-      print('[TrackService] 读取轨迹: $fullPath');
+      // 通过 TrackRecorder 读取（现在是 CompressedTrackStorage）
+      final points = await TrackRecorder().readDay(phoneNumber, year, month, day);
+      print('[TrackService] 读取轨迹: ${points.length} 个点');
       
-      final file = File(fullPath);
-      if (!await file.exists()) {
-        print('[TrackService] 文件不存在');
+      if (points.isEmpty) {
         return [];
       }
 
-      final content = await file.readAsString();
-      print('[TrackService] 文件内容: $content');
-      
-      // 按行分割，支持 \r\n 或 \n
-      final lines = content.split(RegExp(r'\r?\n')).where((l) => l.trim().isNotEmpty).toList();
-      print('[TrackService] 行数: ${lines.length}');
-      
-      if (lines.isEmpty) {
-        print('[TrackService] 无数据行');
-        return [];
-      }
-
-      // 检查第一行是否是表头
-      final firstLine = lines.first;
-      final isHeader = firstLine.contains('timestamp') || firstLine.contains('latitude');
-      final dataLines = isHeader ? lines.skip(1) : lines;
-      
-      final points = <TrackPoint>[];
-      for (final line in dataLines) {
-        if (line.trim().isEmpty) continue;
-        final parts = line.split(',');
-        if (parts.length < 6) continue;
-        try {
-          points.add(TrackPoint(
-            timestamp: DateTime.parse(parts[0].trim()),
-            latitude: double.parse(parts[1].trim()),
-            longitude: double.parse(parts[2].trim()),
-            altitude: double.parse(parts[3].trim()),
-            speed: double.parse(parts[4].trim()),
-            accuracy: double.parse(parts[5].trim()),
-          ));
-        } catch (e) {
-          print('[TrackService] 解析行失败: $line, $e');
-        }
-      }
-      
       points.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
       // WGS84 → GCJ-02 坐标转换（用于高德/腾讯地图显示）
@@ -172,11 +119,11 @@ class TrackService {
             if (int.tryParse(month) == null) continue;
 
             hierarchy[phoneNumber]![year]![month] = <String>[];
-            final csvFiles = await monthEntity.list().toList();
+            final datFiles = await monthEntity.list().toList();
 
-            for (final file in csvFiles) {
-              if (file is File && file.path.endsWith('.csv')) {
-                final day = file.path.split('/').last.replaceAll('.csv', '');
+            for (final file in datFiles) {
+              if (file is File && file.path.endsWith('.dat')) {
+                final day = file.path.split('/').last.replaceAll('.dat', '');
                 hierarchy[phoneNumber]![year]![month]!.add(day);
               }
             }
@@ -201,12 +148,7 @@ class TrackService {
   /// 获取指定日期轨迹文件的修改时间
   Future<DateTime?> getFileModifyTime(String phoneNumber, int year, int month, int day) async {
     try {
-      final filePath = _manager.dayFilePathByYMD(phoneNumber, year, month, day);
-      final file = File(filePath);
-      if (await file.exists()) {
-        final stat = await file.stat();
-        return stat.modified;
-      }
+      return await TrackRecorder().getFileModifyTime(phoneNumber, year, month, day);
     } catch (e) {
       print('[TrackService] 获取文件修改时间失败: $e');
     }

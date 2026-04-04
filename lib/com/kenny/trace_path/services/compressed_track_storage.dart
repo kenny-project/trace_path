@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:geolocator/geolocator.dart';
 import 'track_storage_manager.dart';
+import 'track_recorder.dart';
 import '../proto/track_message.dart';
 
 /// 压缩轨迹点消息
@@ -33,6 +34,30 @@ class CompressedTrackPoint {
     );
   }
 
+  /// 从 TrackPoint 转换
+  factory CompressedTrackPoint.fromTrackPoint(TrackPoint point) {
+    return CompressedTrackPoint(
+      timestampMs: point.timestamp.millisecondsSinceEpoch,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      altitude: point.altitude,
+      speed: point.speed,
+      accuracy: point.accuracy,
+    );
+  }
+
+  /// 转换为 TrackPoint
+  TrackPoint toTrackPoint() {
+    return TrackPoint(
+      timestamp: DateTime.fromMillisecondsSinceEpoch(timestampMs),
+      latitude: latitude,
+      longitude: longitude,
+      altitude: altitude,
+      speed: speed,
+      accuracy: accuracy,
+    );
+  }
+
   TrackPointMessage toMessage() {
     return TrackPointMessage(
       timestampMs: timestampMs,
@@ -47,24 +72,27 @@ class CompressedTrackPoint {
 
 /// 压缩存储实现
 /// 使用二进制 Protobuf 风格编码，大幅减少存储空间
-class CompressedTrackStorage {
+class CompressedTrackStorage implements TrackStorage {
   static const int _fileVersion = 1;
   static const int _headerSize = 32; // 固定头大小
+  static const int _pointSize = 44; // 固定点大小（varint + 5*8/4）
+
+  CompressedTrackStorage();
 
   /// 获取存储管理器
   TrackStorageManager get _manager => TrackStorageManager();
 
-  /// 写入轨迹点（追加模式）
-  Future<void> write(String phoneNumber, CompressedTrackPoint point) async {
+  @override
+  Future<void> write(String phoneNumber, TrackPoint point) async {
     try {
+      final compressed = CompressedTrackPoint.fromTrackPoint(point);
       final dirPath = _manager.userDir(phoneNumber);
       final dir = Directory(dirPath);
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }
 
-      final date = DateTime.now();
-      final filePath = _manager.dayFilePath(phoneNumber, date);
+      final filePath = _manager.dayFilePath(phoneNumber, point.timestamp);
       final file = File(filePath.replaceAll('.csv', '.dat'));
 
       // 确保日期目录存在
@@ -73,7 +101,7 @@ class CompressedTrackStorage {
         await fileDir.create(recursive: true);
       }
 
-      final encoded = point.toMessage().encode();
+      final (encoded, _) = compressed.toMessage().encode();
 
       // 检查文件是否存在
       bool needsHeader = !await file.exists() || await file.length() == 0;
@@ -87,14 +115,14 @@ class CompressedTrackStorage {
       // 追加写入轨迹点
       await file.writeAsBytes(encoded, mode: FileMode.append);
 
-      print('[CompressedTrackStorage] 写入轨迹点: ts=${point.timestampMs}, lat=${point.latitude}');
+      print('[CompressedTrackStorage] 写入轨迹点: ts=${compressed.timestampMs}, lat=${compressed.latitude}');
     } catch (e) {
       print('[CompressedTrackStorage] 写入失败: $e');
     }
   }
 
-  /// 读取指定日期的轨迹
-  Future<List<CompressedTrackPoint>> readDay(String phoneNumber, int year, int month, int day) async {
+  @override
+  Future<List<TrackPoint>> readDay(String phoneNumber, int year, int month, int day) async {
     try {
       final filePath = _manager.dayFilePathByYMD(phoneNumber, year, month, day);
       final file = File(filePath.replaceAll('.csv', '.dat'));
@@ -109,13 +137,11 @@ class CompressedTrackStorage {
       }
 
       // 跳过文件头，读取轨迹点
-      final points = <CompressedTrackPoint>[];
+      final points = <TrackPoint>[];
       int offset = _headerSize;
 
-      const pointSize = 44; // 固定点大小
-
-      while (offset + pointSize <= bytes.length) {
-        final point = TrackPointMessage.decode(bytes, offset);
+      while (offset < bytes.length) {
+        final (point, encodedSize) = TrackPointMessage.decode(bytes, offset);
         if (point != null) {
           points.add(CompressedTrackPoint(
             timestampMs: point.timestampMs,
@@ -124,9 +150,12 @@ class CompressedTrackStorage {
             altitude: point.altitude,
             speed: point.speed,
             accuracy: point.accuracy,
-          ));
+          ).toTrackPoint());
+          offset += encodedSize;
+        } else {
+          // 解码失败，尝试跳过当前点（按最小可能大小跳过）
+          offset += 29; // 最小点大小: 1(varint) + 28
         }
-        offset += pointSize;
       }
 
       return points;
@@ -134,6 +163,55 @@ class CompressedTrackStorage {
       print('[CompressedTrackStorage] 读取失败: $e');
       return [];
     }
+  }
+
+  @override
+  Future<void> deleteDay(String phoneNumber, int year, int month, int day) async {
+    try {
+      final filePath = _manager.dayFilePathByYMD(phoneNumber, year, month, day);
+      final file = File(filePath.replaceAll('.csv', '.dat'));
+
+      if (await file.exists()) {
+        await file.delete();
+        print('[CompressedTrackStorage] 删除轨迹文件: ${file.path}');
+      }
+    } catch (e) {
+      print('[CompressedTrackStorage] 删除失败: $e');
+    }
+  }
+
+  @override
+  Future<String> getTrackFilePath(String phoneNumber, int year, int month, int day) async {
+    final path = _manager.dayFilePathByYMD(phoneNumber, year, month, day);
+    return path.replaceAll('.csv', '.dat');
+  }
+
+  @override
+  Future<DateTime?> getFileModifyTime(String phoneNumber, int year, int month, int day) async {
+    try {
+      final filePath = _manager.dayFilePathByYMD(phoneNumber, year, month, day);
+      final file = File(filePath.replaceAll('.csv', '.dat'));
+
+      if (await file.exists()) {
+        final stat = await file.stat();
+        return stat.modified;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> syncToServer(String phoneNumber) async {
+    // TODO: 实现服务器上报
+    print('[CompressedTrackStorage] syncToServer: 待实现');
+  }
+
+  @override
+  Future<void> pullFromServer(String phoneNumber) async {
+    // TODO: 实现服务器拉取
+    print('[CompressedTrackStorage] pullFromServer: 待实现');
   }
 
   /// 创建文件头

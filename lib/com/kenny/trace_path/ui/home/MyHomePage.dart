@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:trace_path/constants/location_strings.dart' as ls;
 import 'package:trace_path/constants/colors.dart';
+import 'package:trace_path/widgets/user_location_marker.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -259,52 +260,16 @@ class _MyHomePageState extends State<MyHomePage> {
       // 好友标记
       Marker(
         point: const LatLng(39.908, 116.396),
-        width: 40,
-        height: 50,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 3,
-                  ),
-                ],
-              ),
-              child: const Text('👩', style: TextStyle(fontSize: 18)),
-            ),
-            const Icon(Icons.location_on, color: Colors.blue, size: 24),
-          ],
-        ),
+        width: 36,
+        height: 55,
+        child: FriendLocationMarker(emoji: '👩', label: '好友'),
       ),
-      // 自己的位置
+      // 自己的位置 - 高德地图风格红色大头针
       Marker(
         point: const LatLng(39.956, 116.618),
-        width: 40,
-        height: 50,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.vipGold,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 3,
-                  ),
-                ],
-              ),
-              child: const Text('🐤 我', style: TextStyle(fontSize: 12)),
-            ),
-            const Icon(Icons.location_on, color: Colors.red, size: 24),
-          ],
-        ),
+        width: 44,
+        height: 65,
+        child: const UserLocationMarker(),
       ),
     ];
   }
