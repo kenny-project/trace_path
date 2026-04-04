@@ -418,8 +418,8 @@ class BackgroundLocationService {
   // ========== 单次定位（委托给 LocationProvider）==========
   /// 获取当前位置，委托给当前激活的 LocationProvider
   Future<Position?> getCurrentPosition() async {
-    print('[BackgroundLocationService] ========== 定位请求开始 ==========');
-    print('[BackgroundLocationService] 定位参数: provider=${_useNativeLocation ? "Native" : "Geolocator"}, interval=${_intervalSeconds}s, powerSaving=$_powerSaving');
+    log('========== 定位请求开始 ==========');
+    log('定位参数: provider=${_useNativeLocation ? "Native" : "Geolocator"}, interval=${_intervalSeconds}s, powerSaving=$_powerSaving');
     return await _locationProvider?.getCurrentPosition();
   }
 
