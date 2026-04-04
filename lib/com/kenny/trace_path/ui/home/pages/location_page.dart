@@ -129,12 +129,29 @@ class _LocationPageState extends State<LocationPage>
 
   /// 更新好友位置和地址
   /// lat/lng: GCJ-02 坐标（用于显示）
+  /// 先立即更新时间，再异步解析地址（避免地址解析阻塞时间更新）
   Future<void> _updateFriendLocation(double lat, double lng) async {
     try {
-      // 地址解析需要 WGS84 坐标，先转换
+      // 先立即更新位置和时间（不等待地址解析）
+      await _friendService.updateFriendLocation(
+        _friendService.getSelfPhone(),
+        lat,
+        lng,
+        address: null,
+      );
+
+      // 异步解析地址，完成后补上
+      _resolveAndUpdateAddress(lat, lng);
+    } catch (e) {
+      print('[LocationPage] _updateFriendLocation error: $e');
+    }
+  }
+
+  /// 异步解析地址并补全到好友服务（不阻塞位置更新时间）
+  Future<void> _resolveAndUpdateAddress(double lat, double lng) async {
+    try {
       final wgs84 = _locationService.gcj02ToWgs84(lat, lng);
       final address = await _locationService.getAddressFromLatLng(wgs84[0], wgs84[1]);
-      // 保存到好友服务的是 GCJ-02 坐标（用于地图显示）
       await _friendService.updateFriendLocation(
         _friendService.getSelfPhone(),
         lat,
@@ -142,7 +159,7 @@ class _LocationPageState extends State<LocationPage>
         address: address,
       );
     } catch (e) {
-      print('[LocationPage] _updateFriendLocation error: $e');
+      // 地址解析失败静默忽略，位置和时间已更新
     }
   }
 
