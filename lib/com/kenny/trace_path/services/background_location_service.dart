@@ -41,7 +41,7 @@ class BackgroundLocationService {
 
   // ========== 定位提供者（工厂模式）==========
   LocationProvider? _locationProvider;
-  bool _useNativeLocation = false; // 默认使用 Geolocator（调试：临时改回 Geolocator）
+  bool _useNativeLocation = true; // 使用原生定位
 
   // ========== 订阅者管理 ==========
   final List<LocationCallback> _subscribers = [];
@@ -235,57 +235,31 @@ class BackgroundLocationService {
   }
 
   // ========== 定位循环 ==========
-  void _startLocationLoop() {
+  Future<void> _startLocationLoop() async {
     if (_isTracking) return;
-
     _isTracking = true;
-    _scheduleNextLocation();
+
+    while (_isTracking) {
+      await _fetchAndBroadcastLocation();
+      if (!_isTracking) break;
+
+      // 计算实际间隔（省电模式用更长间隔，最小60秒）
+      int actualInterval = _powerSaving
+          ? Math.max(_intervalSeconds, 60)
+          : _intervalSeconds;
+
+      // 等待下次定位
+      await Future.delayed(Duration(seconds: actualInterval));
+    }
   }
 
   void _stopLocationLoop() {
     _isTracking = false;
-    _locationTimer?.cancel();
-    _locationTimer = null;
+    // GPS重试定时器会自然在下一次触发时因 _isTracking=false 而退出
     _gpsRetryTimer?.cancel();
     _gpsRetryTimer = null;
     _gpsRetryCount = 0;
     _gpsRetryInProgress = false;
-  }
-
-  void _scheduleNextLocation() {
-    if (!_isTracking) return;
-
-    _locationTimer?.cancel();
-
-    // 如果GPS重试正在进行中，跳过本次定时调度，等重试处理
-    if (_gpsRetryInProgress) {
-      print('[BackgroundLocationService] GPS重试进行中，跳过本次定时调度');
-      return;
-    }
-
-    // 计算实际间隔（省电模式用更长间隔，最小30秒）
-    int actualInterval = _powerSaving ? Math.max(_intervalSeconds, 60) : _intervalSeconds;
-    print('[BackgroundLocationService] 调度下次定位，_intervalSeconds=${_intervalSeconds}s, actualInterval=${actualInterval}s, _powerSaving=${_powerSaving}');
-
-    _locationTimer = Timer(Duration(seconds: actualInterval), () async {
-      log('>>>>>> 定时器触发！isTracking=$_isTracking');
-      if (!_isTracking) {
-        print('[BackgroundLocationService] 定时器回调结束: _isTracking=false');
-        return;
-      }
-      log('调用 getCurrentPosition...');
-
-      final success = await _fetchAndBroadcastLocation();
-      log('getCurrentPosition 返回: success=$success');
-      // 成功后继续调度；失败时由 _fetchAndBroadcastLocation 内部调度了GPS重试
-      if (success) {
-        log('定位成功，调度下次');
-        _scheduleNextLocation();
-      } else {
-        log('定位失败，等待重试或下次定时');
-      }
-      print('[BackgroundLocationService] <<<<< 定时器回调结束');
-    });
   }
 
   /// GPS失败后调度指数退避重试
@@ -326,8 +300,7 @@ class BackgroundLocationService {
         _broadcast(LocationEvent.position(position));
         await _saveToLocal(position);
 
-        // 重试成功后继续正常调度
-        _scheduleNextLocation();
+        // 重试成功后继续正常循环（while loop会自动继续）
       } else {
         print('[BackgroundLocationService] GPS_RETRY_FAILED: GPS重试仍然失败');
         await _errorLogger.logService(action: 'GPS_RETRY_FAILED', extra: 'attempt=$_gpsRetryCount');
