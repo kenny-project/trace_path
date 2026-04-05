@@ -87,6 +87,10 @@ class BackgroundLocationService {
     // 注册 EventChannel 监听（Flutter 启动时就注册，不管服务有没有启动）
     print('[BackgroundLocationService] init: calling _listenToLocationEvents...');
     _listenToLocationEvents();
+
+    // 启动服务（打开应用时默认开启）
+    print('[BackgroundLocationService] init: calling start()...');
+    start();  // 不 await，服务启动在后台进行
     print('[BackgroundLocationService] ★★★ init() END ★★★');
   }
 

@@ -349,6 +349,8 @@ class LocationForegroundService : Service() {
         val accuracy = location.accuracy
         val now = System.currentTimeMillis()
 
+        Log.d(TAG, "handleLocationResult: $location")
+
         // --- 1. 基础清洗 ---
         if (accuracy <= 0f || accuracy > 200f) { // 大于200米的直接不要，太离谱
             Log.e(TAG, "[DISCARD] accuracy无效: ${accuracy}m, provider=${location.provider}, lat=${location.latitude}, lng=${location.longitude}")
@@ -370,14 +372,14 @@ class LocationForegroundService : Service() {
         // --- 3. 分级过滤策略 ---
         // 策略 A: 如果是 GPS，允许稍微大一点的误差，因为它是连续的
         if (isGps) {
-            if (accuracy > 80f) { // 放宽到 80米，防止轨迹中断
+            if (accuracy > 100f) { // 放宽到 100米，防止轨迹中断
                 Log.e(TAG, "[DISCARD] GPS精度差: accuracy=${accuracy}m")
                 return
             }
-        } 
+        }
         // 策略 B: 如果是网络定位，必须非常准才要
         else {
-            if (accuracy > 50f) { // 网络定位超过50米通常不可信
+            if (accuracy > 100f) { // 网络定位超过200米通常不可信
                 Log.e(TAG, "[DISCARD] 网络定位精度差: accuracy=${accuracy}m")
                 return
             }
