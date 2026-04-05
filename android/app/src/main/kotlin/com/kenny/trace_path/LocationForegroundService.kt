@@ -72,6 +72,8 @@ class LocationForegroundService : Service() {
     private var lastGpsFixTime = 0L        // 上次 GPS 有信号的时间戳
     private var lastProcessedTime = 0L      // 上次处理位置的时间戳(用于节流)
     private var lastProcessedAccuracy = 0f // 上次处理位置的 accuracy(用于比较)
+    private var _gpsNoFixCount = 0         // GPS availability=true 但无回调计数
+    private val _gpsNoFixThreshold = 3    // 连续 N 次则降级到网络定位
 
     // 旧版单次轮询线程引用(requestSingleLocation 保留,但不再用于主循环)
     private var locationThread: Thread? = null
@@ -192,6 +194,16 @@ class LocationForegroundService : Service() {
                 // GPS 信号不可用时记录时间
                 if (!availability.isLocationAvailable && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
                     lastGpsFixTime = System.currentTimeMillis()
+                }
+                // GPS availability=true 但在 HIGH_ACCURACY 模式下没收到回调，计数
+                if (availability.isLocationAvailable && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
+                    _gpsNoFixCount++
+                    Log.w(TAG, "GPS availability=true 但无回调，累计次数=$_gpsNoFixCount")
+                    if (_gpsNoFixCount >= _gpsNoFixThreshold) {
+                        Log.e(TAG, "GPS 连续无回调 $_gpsNoFixThreshold 次，降级到网络定位")
+                        switchToBalanced()
+                        _gpsNoFixCount = 0
+                    }
                 }
             }
         }
@@ -318,6 +330,8 @@ class LocationForegroundService : Service() {
             }
         }
 
+        // 成功处理位置，重置 GPS 无回调计数
+        _gpsNoFixCount = 0
         lastLocation = location
         sendLocationToFlutter(location)
         updateNotification()
