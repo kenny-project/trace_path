@@ -70,6 +70,8 @@ class LocationForegroundService : Service() {
     private var currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY  // 默认网络定位
     private var lastGoodAccuracyTime = 0L  // 上次 accuracy < 30 的时间戳
     private var lastGpsFixTime = 0L        // 上次 GPS 有信号的时间戳
+    private var lastProcessedTime = 0L      // 上次处理位置的时间戳(用于节流)
+    private var lastProcessedAccuracy = 0f // 上次处理位置的 accuracy(用于比较)
 
     // 旧版单次轮询线程引用(requestSingleLocation 保留,但不再用于主循环)
     private var locationThread: Thread? = null
@@ -219,12 +221,12 @@ class LocationForegroundService : Service() {
         } else {
             intervalSeconds * 1000L
         }
-        // 测试一下，默认使用高精定位
+        // 测试一下,默认使用高精定位
         currentPriority = Priority.PRIORITY_HIGH_ACCURACY;
         val builder = LocationRequest.Builder(currentPriority, actualInterval)
             .setMinUpdateIntervalMillis(actualInterval / 2)
-            // 配合距离过滤，防止网络定位把你"瞬移"到别处
-            .setMinUpdateDistanceMeters(2.0f)
+            // 配合距离过滤,防止网络定位把你"瞬移"到别处
+            .setMinUpdateDistanceMeters(5.0f)
 
         try {
             fusedLocationClient.requestLocationUpdates(
@@ -264,21 +266,52 @@ class LocationForegroundService : Service() {
      * 处理收到的定位结果
      * 精准模式根据 accuracy 自动切换 GPS/网络定位
      */
+/*
     private fun handleLocationResult(location: Location) {
         val isGps = location.provider == LocationManager.GPS_PROVIDER
-        val accuracy = location.accuracy // 精度（米）
+        val accuracy = location.accuracy // 精度(米)
+        val now = System.currentTimeMillis()
 
-        // --- 策略 A：如果是 GPS，无条件记录（或仅做轻微过滤） ---
+        if (lastLocation != null) {
+            val timeDelta = now - lastProcessedTime
+            val distanceDelta = lastLocation?.distanceTo(location) ?: 0f
+
+            // 如果 2秒内,移动距离小于 2米,认为是原地抖动,丢弃
+            if (timeDelta < 2000 && distanceDelta < 2.0f) {
+                Log.d(TAG, "丢弃原地抖动点: 距离=${distanceDelta}m")
+                return
+            }
+        }
+
+        // --- 节流: accuracy <= 0 丢弃 ---
+        if (accuracy <= 0f) {
+            Log.d(TAG, "丢弃无效精度: accuracy=${accuracy}m")
+            return
+        }
+
+        // --- 节流: 2秒内精度相差<5f 判定为抖动丢弃 ---
+
+        if (lastProcessedTime > 0 && now - lastProcessedTime < 2000) {
+            if (Math.abs(accuracy - lastProcessedAccuracy) < 5f) {
+                Log.d(TAG, "丢弃抖动位置: accuracy=${accuracy}m, 上次=${lastProcessedAccuracy}m, 间隔=${now - lastProcessedTime}ms")
+                return
+            }
+        }
+
+        lastProcessedTime = now
+        lastProcessedAccuracy = accuracy
+
+        // --- 策略 A:如果是 GPS,无条件记录(或仅做轻微过滤) ---
         if (isGps) {
-            if (accuracy > 50) { // 即使是 GPS，误差太大也不要
+            if (accuracy > 50) { // 即使是 GPS,误差太大也不要
                 Log.d(TAG, "丢弃低精度网络定位: ${accuracy}米")
                 return
             }
         }
         else {
-            // --- 策略 B：如果是网络定位（Wi-Fi/基站），要严格过滤 ---
-            // 网络定位经常会有“瞬移”现象（比如突然跳到 500米外）
-            // 如果精度大于 100米，直接丢弃，不要画在轨迹上
+            // --- 策略 B:如果是网络定位(Wi-Fi/基站),要严格过滤 ---
+            // 网络定位经常会有"瞬移"现象(比如突然跳到 500米外)
+            // 如果精度大于 100米,直接丢弃,不要画在轨迹上
             if (accuracy > 100) {
                 Log.d(TAG, "丢弃低精度网络定位: ${accuracy}米")
                 return
@@ -306,6 +339,66 @@ class LocationForegroundService : Service() {
                         switchToBalanced()
                     }
                 }
+            }
+        }
+    }
+*/
+
+    private fun handleLocationResult(location: Location) {
+        val isGps = location.provider == LocationManager.GPS_PROVIDER
+        val accuracy = location.accuracy
+        val now = System.currentTimeMillis()
+
+        // --- 1. 基础清洗 ---
+        if (accuracy <= 0f || accuracy > 200f) { // 大于200米的直接不要，太离谱
+            Log.d(TAG, "丢弃无效精度: ${accuracy}m")
+            return
+        }
+
+        // --- 2. 距离+时间 双重防抖动 (核心修改) ---
+        if (lastLocation != null) {
+            val timeDelta = now - lastProcessedTime
+            val distanceDelta = lastLocation?.distanceTo(location) ?: 0f
+            
+            // 如果时间间隔很短（<1.5秒）且 距离很近（<2米），视为原地噪点
+            if (timeDelta < 1500 && distanceDelta < 2.0f) {
+                Log.d(TAG, "丢弃抖动点: 间隔=${timeDelta}ms, 距离=${distanceDelta}m")
+                return
+            }
+        }
+
+        // --- 3. 分级过滤策略 ---
+        // 策略 A: 如果是 GPS，允许稍微大一点的误差，因为它是连续的
+        if (isGps) {
+            if (accuracy > 80f) { // 放宽到 80米，防止轨迹中断
+                Log.d(TAG, "丢弃低精度GPS: ${accuracy}m")
+                return
+            }
+        } 
+        // 策略 B: 如果是网络定位，必须非常准才要
+        else {
+            if (accuracy > 50f) { // 网络定位超过50米通常不可信
+                Log.d(TAG, "丢弃低精度网络定位: ${accuracy}m")
+                return
+            }
+        }
+
+        // --- 4. 记录数据 ---
+        lastLocation = location
+        lastProcessedTime = now
+        lastProcessedAccuracy = accuracy
+        
+        sendLocationToFlutter(location)
+        updateNotification()
+
+        // --- 5. 动态策略 (建议简化) ---
+        // 除非你非常清楚自己在做什么，否则建议：
+        // 一旦开始记录，就尽量保持在 HIGH_ACCURACY，不要轻易切回 BALANCED
+        // 如果这里保留逻辑，建议加一个"滞后阈值"，防止反复横跳
+        if (!powerSaving) {
+            if (isGps && accuracy > 100f && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
+                 // 只有 GPS 真的很差，且持续一段时间，才考虑降级（这里暂不实现降级，建议直接忽略坏点）
+                 Log.d(TAG, "GPS信号差，但保持 GPS 模式以避免网络跳变")
             }
         }
     }
