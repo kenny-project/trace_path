@@ -151,6 +151,19 @@ class BackgroundLocationService {
       final lines = await kotlinFile.readAsLines();
       if (lines.length <= 1) return; // 只有表头
 
+      // 获取当前存储中今日轨迹的最后一个时间戳，用于排重
+      final phone = UserService().currentPhoneNumber ?? '1000000';
+      int? lastRecordedTimestamp;
+      try {
+        final existingPoints = await TrackRecorder().readDay(phone, today.year, today.month, today.day);
+        if (existingPoints.isNotEmpty) {
+          lastRecordedTimestamp = existingPoints.last.timestamp.millisecondsSinceEpoch;
+          print('[BackgroundLocationService] 当前存储最后点时间: ${DateTime.fromMillisecondsSinceEpoch(lastRecordedTimestamp)}');
+        }
+      } catch (e) {
+        print('[BackgroundLocationService] 读取已有轨迹失败: $e');
+      }
+
       int recoveredCount = 0;
       for (int i = 1; i < lines.length; i++) {
         final line = lines[i].trim();
@@ -161,6 +174,12 @@ class BackgroundLocationService {
 
         try {
           final timestamp = int.parse(parts[0]);
+
+          // 跳过比当前存储最新点更早或相等的点（防重复）
+          if (lastRecordedTimestamp != null && timestamp <= lastRecordedTimestamp) {
+            continue;
+          }
+
           final latitude = double.parse(parts[1]);
           final longitude = double.parse(parts[2]);
           final accuracy = double.parse(parts[3]);
@@ -190,6 +209,13 @@ class BackgroundLocationService {
       if (recoveredCount > 0) {
         print('[BackgroundLocationService] 从 Kotlin 侧恢复了 $recoveredCount 个轨迹点');
         await _errorLogger.logService(action: 'KOTLIN_TRACK_RECOVERED', extra: 'count=$recoveredCount');
+        // 恢复成功后删除 CSV，避免重复恢复
+        try {
+          await kotlinFile.delete();
+          print('[BackgroundLocationService] Kotlin CSV 已删除: track_$dateStr.csv');
+        } catch (e) {
+          print('[BackgroundLocationService] Kotlin CSV 删除失败: $e');
+        }
       }
     } catch (e) {
       print('[BackgroundLocationService] 恢复 Kotlin 轨迹数据失败: $e');
