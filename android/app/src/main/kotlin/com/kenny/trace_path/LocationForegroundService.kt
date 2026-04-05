@@ -224,9 +224,9 @@ class LocationForegroundService : Service() {
         // 测试一下,默认使用高精定位
         currentPriority = Priority.PRIORITY_HIGH_ACCURACY;
         val builder = LocationRequest.Builder(currentPriority, actualInterval)
-            .setMinUpdateIntervalMillis(actualInterval / 2)
+            .setMinUpdateIntervalMillis(1000)
             // 配合距离过滤,防止网络定位把你"瞬移"到别处
-            .setMinUpdateDistanceMeters(5.0f)
+            .setMinUpdateDistanceMeters(1.0f)
 
         try {
             fusedLocationClient.requestLocationUpdates(
@@ -320,7 +320,7 @@ class LocationForegroundService : Service() {
 
         lastLocation = location
         sendLocationToFlutter(location)
-        updateNotification()
+        updateNotification(location)
 
         if (!powerSaving) {
             // 精准模式:根据 accuracy 动态切换定位源
@@ -391,7 +391,7 @@ class LocationForegroundService : Service() {
         lastProcessedAccuracy = accuracy
         
         sendLocationToFlutter(location)
-        updateNotification()
+        updateNotification(location)
 
         // --- 5. 动态策略 (建议简化) ---
         // 除非你非常清楚自己在做什么，否则建议：
