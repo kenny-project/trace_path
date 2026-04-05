@@ -203,21 +203,19 @@ class BackgroundLocationService {
           recoveredCount++;
         } catch (e) {
           // 解析失败跳过
-          print('[BackgroundLocationService] ★ 解析 Kotlin 轨迹点失败[$i]: $e ★★★');
-          break;
         }
       }
 
       if (recoveredCount > 0) {
         print('[BackgroundLocationService] 从 Kotlin 侧恢复了 $recoveredCount 个轨迹点');
         await _errorLogger.logService(action: 'KOTLIN_TRACK_RECOVERED', extra: 'count=$recoveredCount');
-      }
-      // 恢复成功后删除 CSV，避免重复恢复
-      try {
-        await kotlinFile.delete();
-        print('[BackgroundLocationService] Kotlin CSV 已删除: track_$dateStr.csv');
-      } catch (e) {
-        print('[BackgroundLocationService] Kotlin CSV 删除失败: $e');
+        // 恢复成功后删除 CSV，避免重复恢复
+        try {
+          await kotlinFile.delete();
+          print('[BackgroundLocationService] Kotlin CSV 已删除: track_$dateStr.csv');
+        } catch (e) {
+          print('[BackgroundLocationService] Kotlin CSV 删除失败: $e');
+        }
       }
     } catch (e) {
       print('[BackgroundLocationService] 恢复 Kotlin 轨迹数据失败: $e');
