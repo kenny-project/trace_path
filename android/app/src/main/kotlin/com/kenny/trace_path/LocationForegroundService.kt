@@ -351,7 +351,7 @@ class LocationForegroundService : Service() {
 
         // --- 1. 基础清洗 ---
         if (accuracy <= 0f || accuracy > 200f) { // 大于200米的直接不要，太离谱
-            Log.d(TAG, "丢弃无效精度: ${accuracy}m")
+            Log.e(TAG, "[DISCARD] accuracy无效: ${accuracy}m, provider=${location.provider}, lat=${location.latitude}, lng=${location.longitude}")
             return
         }
 
@@ -362,7 +362,7 @@ class LocationForegroundService : Service() {
             
             // 如果时间间隔很短（<1.5秒）且 距离很近（<2米），视为原地噪点
             if (timeDelta < 1500 && distanceDelta < 2.0f) {
-                Log.d(TAG, "丢弃抖动点: 间隔=${timeDelta}ms, 距离=${distanceDelta}m")
+                Log.e(TAG, "[DISCARD] 原地抖动: 间隔=${timeDelta}ms, 距离=${distanceDelta}m, accuracy=${accuracy}m")
                 return
             }
         }
@@ -371,14 +371,14 @@ class LocationForegroundService : Service() {
         // 策略 A: 如果是 GPS，允许稍微大一点的误差，因为它是连续的
         if (isGps) {
             if (accuracy > 80f) { // 放宽到 80米，防止轨迹中断
-                Log.d(TAG, "丢弃低精度GPS: ${accuracy}m")
+                Log.e(TAG, "[DISCARD] GPS精度差: accuracy=${accuracy}m")
                 return
             }
         } 
         // 策略 B: 如果是网络定位，必须非常准才要
         else {
             if (accuracy > 50f) { // 网络定位超过50米通常不可信
-                Log.d(TAG, "丢弃低精度网络定位: ${accuracy}m")
+                Log.e(TAG, "[DISCARD] 网络定位精度差: accuracy=${accuracy}m")
                 return
             }
         }
