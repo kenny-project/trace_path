@@ -3,10 +3,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:csv/csv.dart';
 
-
-/// CSV存储服务
+/// CSV存储服务（已废弃）
+/// @deprecated 请使用 [CompressedTrackStorage] 代替
+///
 /// 保存路径：应用文件目录/location_tracks/YYYY-MM-DD.csv
 /// 格式：timestamp,latitude,longitude,altitude,speed,accuracy
+@Deprecated('请使用 CompressedTrackStorage 代替')
 class CsvStorageService {
   static const String _folderName = 'location_tracks';
   static const double _minDistance = 10.0; // 前后距离小于10米不保存

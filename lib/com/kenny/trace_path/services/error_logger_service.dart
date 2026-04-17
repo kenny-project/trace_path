@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'dart:async';
+import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 /// 错误日志标签类型
@@ -20,6 +20,8 @@ enum ErrorTag {
 
 /// 通用错误日志服务
 /// 文件轮转：error.log -> error.log.1 -> error.log.2（最多2个历史）
+///
+/// 使用异步队列处理高频日志写入，避免阻塞主线程
 class ErrorLoggerService {
   static final ErrorLoggerService _instance = ErrorLoggerService._();
   factory ErrorLoggerService() => _instance;
@@ -30,64 +32,78 @@ class ErrorLoggerService {
   static const int _maxFileSizeBytes = 20 * 1024 * 1024; // 20MB
 
   String? _logDirPath;
-  
-  // 写入队列，确保日志不丢失
+
+  // 异步写入队列
   final _writeQueue = <String>[];
   bool _isWriting = false;
+
+  // 写入控制信号
+  final _controller = StreamController<void>.broadcast();
 
   /// 初始化，获取日志目录路径
   Future<void> init() async {
     final appDir = await getApplicationDocumentsDirectory();
     _logDirPath = '${appDir.path}/$_logDirName';
-    
+
     final dir = Directory(_logDirPath!);
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
+
+    // 启动异步处理循环
+    _startProcessingLoop();
   }
 
-  /// 记录错误日志（异步写入，不阻塞）
-  Future<void> log(ErrorTag tag, String message) async {
-    if (_logDirPath == null) await init();
-    
-    final timestamp = _formatTimestamp(DateTime.now());
-    final logLine = '[$timestamp] ${tag.label} $message';
-    
-    // 加入写入队列
-    _writeQueue.add(logLine);
-    _processWriteQueue();
+  /// 启动异步处理循环
+  void _startProcessingLoop() {
+    _controller.stream.listen((_) {
+      _processQueueAsync();
+    });
   }
 
-  /// 处理写入队列
-  Future<void> _processWriteQueue() async {
+  /// 触发队列处理
+  void _scheduleProcess() {
+    _controller.add(null);
+  }
+
+  /// 处理写入队列（异步）
+  Future<void> _processQueueAsync() async {
     if (_isWriting || _writeQueue.isEmpty) return;
+
+    _isWriting = true;
     try {
-      _isWriting = true;
+      // 批量处理队列中的所有日志
+      final batch = <String>[];
       while (_writeQueue.isNotEmpty) {
-        await _writeToFile(_writeQueue.removeAt(0));
+        batch.add(_writeQueue.removeAt(0));
+      }
+
+      // 批量写入文件
+      if (batch.isNotEmpty) {
+        await _writeBatchToFile(batch);
+      }
+    } catch (e) {
+      // 如果写入失败，将日志打印到控制台作为后备
+      for (final line in _writeQueue.take(10)) {
+        print('[ErrorLogger] 写入失败，回退到 console: $line');
       }
     } finally {
       _isWriting = false;
+
+      // 如果队列中还有内容，继续处理
+      if (_writeQueue.isNotEmpty) {
+        // 使用 Future.microtask 避免立即递归导致堆栈溢出
+        Future.microtask(_processQueueAsync);
+      }
     }
   }
 
-  /// 记录应用启动
-  Future<void> logAppStart() async {
-    // 添加分割线
-    _writeQueue.add('--- APP STARTED ---');
-    _processWriteQueue();
-  }
+  /// 批量写入日志到文件
+  Future<void> _writeBatchToFile(List<String> batch) async {
+    if (_logDirPath == null) return;
 
-  /// 记录应用关闭
-  Future<void> logAppStop() async {
-    _writeQueue.add('--- APP STOPPED ---');
-    _processWriteQueue();
-  }
-
-  /// 写入单个日志行到文件
-  Future<void> _writeToFile(String logLine) async {
     final file = File('$_logDirPath/$_logFileName');
-    
+
     try {
       // 检查文件大小，必要时轮转
       if (await file.exists()) {
@@ -96,41 +112,45 @@ class ErrorLoggerService {
           await _rotateFile();
         }
       }
-      
+
       // 追加写入
       final raf = await file.open(mode: FileMode.append);
-      await raf.writeString('$logLine\n');
-      await raf.close();
+      try {
+        for (final line in batch) {
+          await raf.writeString('$line\n');
+        }
+      } finally {
+        await raf.close();
+      }
     } catch (e) {
-      print('[ErrorLogger] 写入日志失败: $e');
+      print('[ErrorLogger] 批量写入日志失败: $e');
     }
   }
 
-  /// 执行文件轮转
-  Future<void> _rotateFile() async {
-    final file = File('$_logDirPath/$_logFileName');
-    final log1 = File('$_logDirPath/$_logFileName.1');
-    final log2 = File('$_logDirPath/$_logFileName.2');
-    
-    try {
-      // 删除最老的
-      if (await log2.exists()) {
-        await log2.delete();
-      }
-      
-      // log1 -> log2
-      if (await log1.exists()) {
-        await log1.rename('$_logDirPath/$_logFileName.2');
-      }
-      
-      // 当前日志 -> log1
-      await file.rename('$_logDirPath/$_logFileName.1');
-      
-      // 创建新的空文件
-      await file.writeAsString('');
-    } catch (e) {
-      print('[ErrorLogger] 文件轮转失败: $e');
+  /// 记录错误日志（异步写入，不阻塞）
+  Future<void> log(ErrorTag tag, String message) async {
+    if (_logDirPath == null) {
+      await init();
     }
+
+    final timestamp = _formatTimestamp(DateTime.now());
+    final logLine = '[$timestamp] ${tag.label} $message';
+
+    // 加入写入队列
+    _writeQueue.add(logLine);
+    _scheduleProcess();
+  }
+
+  /// 记录应用启动
+  void logAppStart() {
+    _writeQueue.add('--- APP STARTED ---');
+    _scheduleProcess();
+  }
+
+  /// 记录应用关闭
+  void logAppStop() {
+    _writeQueue.add('--- APP STOPPED ---');
+    _scheduleProcess();
   }
 
   /// GPS定位失败日志
@@ -145,7 +165,7 @@ class ErrorLoggerService {
     if (accuracy != null) msg += ' accuracy=${accuracy}m';
     if (timeout != null) msg += ' timeout=${timeout}s';
     if (extra != null) msg += ' extra=$extra';
-    
+
     await log(ErrorTag.gpsFail, msg);
   }
 
@@ -158,7 +178,7 @@ class ErrorLoggerService {
     String msg = 'reason=$reason';
     if (timeout != null) msg += ' timeout=${timeout}s';
     if (extra != null) msg += ' extra=$extra';
-    
+
     await log(ErrorTag.networkFail, msg);
   }
 
@@ -198,7 +218,7 @@ class ErrorLoggerService {
   }) async {
     String msg = 'action=$action';
     if (extra != null) msg += ' $extra';
-    
+
     await log(ErrorTag.service, msg);
   }
 
@@ -207,15 +227,42 @@ class ErrorLoggerService {
     await log(ErrorTag.debug, message);
   }
 
+  /// 执行文件轮转
+  Future<void> _rotateFile() async {
+    final file = File('$_logDirPath/$_logFileName');
+    final log1 = File('$_logDirPath/$_logFileName.1');
+    final log2 = File('$_logDirPath/$_logFileName.2');
+
+    try {
+      // 删除最老的
+      if (await log2.exists()) {
+        await log2.delete();
+      }
+
+      // log1 -> log2
+      if (await log1.exists()) {
+        await log1.rename('$_logDirPath/$_logFileName.2');
+      }
+
+      // 当前日志 -> log1
+      await file.rename('$_logDirPath/$_logFileName.1');
+
+      // 创建新的空文件
+      await file.writeAsString('');
+    } catch (e) {
+      print('[ErrorLogger] 文件轮转失败: $e');
+    }
+  }
+
   /// 读取当前日志文件内容
   Future<String> readCurrentLogs() async {
     if (_logDirPath == null) await init();
-    
+
     final file = File('$_logDirPath/$_logFileName');
     if (!await file.exists()) {
       return '';
     }
-    
+
     try {
       return await file.readAsString();
     } catch (e) {
@@ -226,9 +273,9 @@ class ErrorLoggerService {
   /// 读取所有日志文件（当前 + 轮转的）
   Future<Map<String, String>> readAllLogs() async {
     if (_logDirPath == null) await init();
-    
+
     final result = <String, String>{};
-    
+
     // 读取当前日志
     final currentFile = File('$_logDirPath/$_logFileName');
     if (await currentFile.exists()) {
@@ -238,7 +285,7 @@ class ErrorLoggerService {
         result['error.log'] = '读取失败: $e';
       }
     }
-    
+
     // 读取轮转日志
     final log1 = File('$_logDirPath/$_logFileName.1');
     if (await log1.exists()) {
@@ -248,7 +295,7 @@ class ErrorLoggerService {
         result['error.log.1'] = '读取失败: $e';
       }
     }
-    
+
     final log2 = File('$_logDirPath/$_logFileName.2');
     if (await log2.exists()) {
       try {
@@ -257,14 +304,14 @@ class ErrorLoggerService {
         result['error.log.2'] = '读取失败: $e';
       }
     }
-    
+
     return result;
   }
 
   /// 清空当前日志（不删除文件）
   Future<void> clearCurrentLogs() async {
     if (_logDirPath == null) await init();
-    
+
     final file = File('$_logDirPath/$_logFileName');
     if (await file.exists()) {
       await file.writeAsString('');
@@ -274,17 +321,17 @@ class ErrorLoggerService {
   /// 获取日志文件信息
   Future<Map<String, dynamic>> getLogInfo() async {
     if (_logDirPath == null) await init();
-    
+
     final file = File('$_logDirPath/$_logFileName');
     int size = 0;
     int lineCount = 0;
-    
+
     if (await file.exists()) {
       size = await file.length();
       final content = await file.readAsString();
       lineCount = content.split('\n').where((l) => l.isNotEmpty).length;
     }
-    
+
     return {
       'currentSize': size,
       'currentLines': lineCount,
@@ -292,36 +339,8 @@ class ErrorLoggerService {
     };
   }
 
-  /// 检查是否需要轮转
-  Future<void> _rotateIfNeeded(File file) async {
-    if (!await file.exists()) return;
-    
-    final size = await file.length();
-    if (size < _maxFileSizeBytes) return;
-    
-    // 文件超过20MB，执行轮转
-    // error.log -> error.log.1 -> error.log.2 -> 删除
-    
-    final dir = file.parent.path;
-    final log1 = File('$dir/$_logFileName.1');
-    final log2 = File('$dir/$_logFileName.2');
-    
-    // 删除最老的
-    if (await log2.exists()) {
-      await log2.delete();
-    }
-    
-    // log1 -> log2
-    if (await log1.exists()) {
-      await log1.rename('$dir/$_logFileName.2');
-    }
-    
-    // 当前日志 -> log1
-    await file.rename('$dir/$_logFileName.1');
-    
-    // 创建新的空文件
-    await file.writeAsString('');
-  }
+  /// 获取队列中待写入的日志数量（用于调试）
+  int get pendingLogs => _writeQueue.length;
 
   String _formatTimestamp(DateTime t) {
     return '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} '

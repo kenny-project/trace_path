@@ -5,7 +5,7 @@ import 'location_provider.dart';
 
 /// Android 原生定位提供者实现
 /// 通过 MethodChannel 调用 Android 原生 FusedLocationProviderClient
-/// 
+///
 /// 超时时间设置参考（来自高德/百度建议）：
 /// - GPS首次定位：通常30-60秒，信号差环境（地铁/室内）可能更长
 /// - 网络定位：10-15秒
@@ -14,6 +14,9 @@ class NativeLocationProvider implements LocationProvider {
   static const _channel = MethodChannel('com.kenny.trace_path/native_location');
 
   final ErrorLoggerService _errorLogger = ErrorLoggerService();
+
+  @override
+  String get name => 'NativeLocationProvider';
 
   /// 统一日志方法：同时输出到logcat和文件
   void log(String msg) {
@@ -155,7 +158,7 @@ class NativeLocationProvider implements LocationProvider {
   }
 
   @override
-  Future<void> dispose() async {
+  void dispose() {
     // 无需清理资源
   }
 }

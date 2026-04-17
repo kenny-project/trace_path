@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'track_recorder.dart';
 import 'track_storage_manager.dart';
@@ -80,8 +81,49 @@ class TrackService {
 
       // WGS84 → GCJ-02 坐标转换（用于高德/腾讯地图显示）
       final convertedPoints = points.map((p) => p.toGcj02()).toList();
-      print('[TrackService] 转换成功: ${convertedPoints.length} 个点');
-      return convertedPoints;
+
+      // 过滤无效坐标（NaN、Infinity、越界坐标、跳变过大等）
+      final validPoints = <TrackPoint>[];
+      const double maxJumpMeters = 5000; // 单次跳变超过5km视为异常
+
+      for (int i = 0; i < convertedPoints.length; i++) {
+        final p = convertedPoints[i];
+
+        // 1. NaN / Infinity 检查
+        if (p.latitude.isNaN || p.latitude.isInfinite) continue;
+        if (p.longitude.isNaN || p.longitude.isInfinite) continue;
+
+        // 2. 坐标越界检查（中国区域大致范围，防止漂移到海洋）
+        if (p.latitude < -90 || p.latitude > 90) continue;
+        if (p.longitude < -180 || p.longitude > 180) continue;
+
+        // 3. (0,0) 海洋坐标过滤（GPS未锁定常见值）
+        if (p.latitude == 0 && p.longitude == 0) continue;
+
+        // 4. 相邻点跳变过大检查
+        if (validPoints.isNotEmpty) {
+          const distance = Distance();
+          final jump = distance.as(
+            LengthUnit.Meter,
+            validPoints.last.toLatLng(),
+            p.toLatLng(),
+          );
+          if (jump > maxJumpMeters) {
+            print('[TrackService] 跳过跳变过大的点: ${jump.toStringAsFixed(0)}m');
+            continue;
+          }
+        }
+
+        validPoints.add(p);
+      }
+
+      final removed = convertedPoints.length - validPoints.length;
+      if (removed > 0) {
+        print('[TrackService] 过滤掉 $removed 个无效坐标点');
+      }
+
+      print('[TrackService] 转换成功: ${validPoints.length} 个点');
+      return validPoints;
     } catch (e) {
       print('[TrackService] 读取失败: $e');
       return [];

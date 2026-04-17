@@ -1,8 +1,8 @@
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
+import '../utils/coordinate_utils.dart';
 import 'user_service.dart';
 import 'track_storage_manager.dart';
 import 'compressed_track_storage.dart';
@@ -42,7 +42,7 @@ class TrackPoint {
 
   /// 创建转换后的轨迹点（WGS84 → GCJ-02）
   TrackPoint toGcj02() {
-    final gcj02 = wgs84ToGcj02(latitude, longitude);
+    final gcj02 = CoordinateUtils.wgs84ToGcj02(latitude, longitude);
     return TrackPoint(
       timestamp: timestamp,
       latitude: gcj02[0],
@@ -53,47 +53,9 @@ class TrackPoint {
     );
   }
 
-  /// WGS84 转 GCJ-02
+  /// WGS84 转 GCJ-02（委托给 CoordinateUtils）
   static List<double> wgs84ToGcj02(double lat, double lng) {
-    const double pi = 3.1415926535897932384626;
-    const double a = 6378245.0;
-    const double ee = 0.00669342162296594323;
-
-    double dLat = _transformLat(lng - 105.0, lat - 35.0);
-    double dLng = _transformLng(lng - 105.0, lat - 35.0);
-
-    double radLat = lat / 180.0 * pi;
-    double sinLat = math.sin(radLat);
-    double cosLat = math.cos(radLat);
-    double magic = 1 - ee * sinLat * sinLat;
-    double sqrtMagic = math.sqrt(magic);
-
-    dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * pi);
-    dLng = (dLng * 180.0) / (a / sqrtMagic * cosLat * pi);
-
-    return [lat + dLat, lng + dLng];
-  }
-
-  static double _transformLat(double x, double y) {
-    const double pi = 3.1415926535897932384626;
-    double ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y;
-    double sqrtX = x >= 0 ? x : -x;
-    ret += 0.2 * math.sqrt(sqrtX);
-    ret += (20.0 * math.sin(6.0 * x * pi) + 20.0 * math.sin(2.0 * x * pi)) * 2.0 / 3.0;
-    ret += (20.0 * math.sin(y * pi) + 40.0 * math.sin(y / 3.0 * pi)) * 2.0 / 3.0;
-    ret += (160.0 * math.sin(y / 12.0 * pi) + 320.0 * math.sin(y * pi / 30.0)) * 2.0 / 3.0;
-    return ret;
-  }
-
-  static double _transformLng(double x, double y) {
-    const double pi = 3.1415926535897932384626;
-    double ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y;
-    double sqrtX = x >= 0 ? x : -x;
-    ret += 0.1 * math.sqrt(sqrtX);
-    ret += (20.0 * math.sin(6.0 * x * pi) + 20.0 * math.sin(2.0 * x * pi)) * 2.0 / 3.0;
-    ret += (20.0 * math.sin(x * pi) + 40.0 * math.sin(x / 3.0 * pi)) * 2.0 / 3.0;
-    ret += (150.0 * math.sin(x / 12.0 * pi) + 300.0 * math.sin(x / 30.0 * pi)) * 2.0 / 3.0;
-    return ret;
+    return CoordinateUtils.wgs84ToGcj02(lat, lng);
   }
 
   /// 转换为 CSV 行
@@ -145,6 +107,14 @@ class LocalCsvStorage implements TrackStorage {
 
   @override
   Future<void> write(String phoneNumber, TrackPoint point) async {
+    // 过滤无效坐标写入
+    if (point.latitude.isNaN || point.latitude.isInfinite ||
+        point.longitude.isNaN || point.longitude.isInfinite ||
+        (point.latitude == 0 && point.longitude == 0)) {
+      print('[LocalCsvStorage] 跳过无效坐标: lat=${point.latitude}, lng=${point.longitude}');
+      return;
+    }
+
     try {
       final dirPath = _manager.userDir(phoneNumber);
       final trackDir = Directory(
@@ -304,27 +274,27 @@ class TrackRecorder {
   }
 
   /// 读取某天的轨迹
-  Future<List<TrackPoint>> readDay(String phoneNumber, int year, int month, int day) async {
-    return await _storage.readDay(phoneNumber, year, month, day);
+  Future<List<TrackPoint>> readDay(String phoneNumber, int year, int month, int day) {
+    return _storage.readDay(phoneNumber, year, month, day);
   }
 
   /// 删除某天的轨迹
-  Future<void> deleteDay(String phoneNumber, int year, int month, int day) async {
-    await _storage.deleteDay(phoneNumber, year, month, day);
+  Future<void> deleteDay(String phoneNumber, int year, int month, int day) {
+    return _storage.deleteDay(phoneNumber, year, month, day);
   }
 
   /// 获取轨迹文件修改时间
-  Future<DateTime?> getFileModifyTime(String phoneNumber, int year, int month, int day) async {
-    return await _storage.getFileModifyTime(phoneNumber, year, month, day);
+  Future<DateTime?> getFileModifyTime(String phoneNumber, int year, int month, int day) {
+    return _storage.getFileModifyTime(phoneNumber, year, month, day);
   }
 
   /// 同步到服务器
-  Future<void> syncToServer(String phoneNumber) async {
-    await _storage.syncToServer(phoneNumber);
+  Future<void> syncToServer(String phoneNumber) {
+    return _storage.syncToServer(phoneNumber);
   }
 
   /// 从服务器拉取
-  Future<void> pullFromServer(String phoneNumber) async {
-    await _storage.pullFromServer(phoneNumber);
+  Future<void> pullFromServer(String phoneNumber) {
+    return _storage.pullFromServer(phoneNumber);
   }
 }

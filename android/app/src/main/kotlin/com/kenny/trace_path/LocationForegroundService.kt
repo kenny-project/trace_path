@@ -266,90 +266,12 @@ class LocationForegroundService : Service() {
      * 处理收到的定位结果
      * 精准模式根据 accuracy 自动切换 GPS/网络定位
      */
-/*
-    private fun handleLocationResult(location: Location) {
-        val isGps = location.provider == LocationManager.GPS_PROVIDER
-        val accuracy = location.accuracy // 精度(米)
-        val now = System.currentTimeMillis()
-
-        if (lastLocation != null) {
-            val timeDelta = now - lastProcessedTime
-            val distanceDelta = lastLocation?.distanceTo(location) ?: 0f
-
-            // 如果 2秒内,移动距离小于 2米,认为是原地抖动,丢弃
-            if (timeDelta < 2000 && distanceDelta < 2.0f) {
-                Log.d(TAG, "丢弃原地抖动点: 距离=${distanceDelta}m")
-                return
-            }
-        }
-
-        // --- 节流: accuracy <= 0 丢弃 ---
-        if (accuracy <= 0f) {
-            Log.d(TAG, "丢弃无效精度: accuracy=${accuracy}m")
-            return
-        }
-
-        // --- 节流: 2秒内精度相差<5f 判定为抖动丢弃 ---
-
-        if (lastProcessedTime > 0 && now - lastProcessedTime < 2000) {
-            if (Math.abs(accuracy - lastProcessedAccuracy) < 5f) {
-                Log.d(TAG, "丢弃抖动位置: accuracy=${accuracy}m, 上次=${lastProcessedAccuracy}m, 间隔=${now - lastProcessedTime}ms")
-                return
-            }
-        }
-
-        lastProcessedTime = now
-        lastProcessedAccuracy = accuracy
-
-        // --- 策略 A:如果是 GPS,无条件记录(或仅做轻微过滤) ---
-        if (isGps) {
-            if (accuracy > 50) { // 即使是 GPS,误差太大也不要
-                Log.d(TAG, "丢弃低精度网络定位: ${accuracy}米")
-                return
-            }
-        }
-        else {
-            // --- 策略 B:如果是网络定位(Wi-Fi/基站),要严格过滤 ---
-            // 网络定位经常会有"瞬移"现象(比如突然跳到 500米外)
-            // 如果精度大于 100米,直接丢弃,不要画在轨迹上
-            if (accuracy > 100) {
-                Log.d(TAG, "丢弃低精度网络定位: ${accuracy}米")
-                return
-            }
-        }
-
-        lastLocation = location
-        sendLocationToFlutter(location)
-        updateNotification(location)
-
-        if (!powerSaving) {
-            // 精准模式:根据 accuracy 动态切换定位源
-            when (currentPriority) {
-                Priority.PRIORITY_BALANCED_POWER_ACCURACY -> {
-                    // 当前是网络定位,收到好位置切到 GPS
-                    if (location.accuracy < 30f) {
-                        Log.d(TAG, "handleLocationResult: accuracy=${location.accuracy}m, switching to HIGH_ACCURACY")
-                        switchToHighAccuracy()
-                    }
-                }
-                Priority.PRIORITY_HIGH_ACCURACY -> {
-                    // 当前是 GPS 定位,精度变差则切回网络
-                    if (location.accuracy > 50f) {
-                        Log.d(TAG, "handleLocationResult: accuracy=${location.accuracy}m > 50m, switching to BALANCED")
-                        switchToBalanced()
-                    }
-                }
-            }
-        }
-    }
-*/
-
     private fun handleLocationResult(location: Location) {
         val isGps = location.provider == LocationManager.GPS_PROVIDER
         val accuracy = location.accuracy
         val now = System.currentTimeMillis()
 
-        Log.d(TAG, "handleLocationResult: $location")
+        Log.d(TAG, "handleLocationResult: pos=${location.longitude},${location.latitude}, isGps=${isGps}, accuracy =${accuracy}")
 
         // --- 1. 基础清洗 ---
         if (accuracy <= 0f || accuracy > 200f) { // 大于200米的直接不要，太离谱

@@ -84,6 +84,14 @@ class CompressedTrackStorage implements TrackStorage {
 
   @override
   Future<void> write(String phoneNumber, TrackPoint point) async {
+    // 过滤无效坐标写入
+    if (point.latitude.isNaN || point.latitude.isInfinite ||
+        point.longitude.isNaN || point.longitude.isInfinite ||
+        (point.latitude == 0 && point.longitude == 0)) {
+      print('[CompressedTrackStorage] 跳过无效坐标: lat=${point.latitude}, lng=${point.longitude}');
+      return;
+    }
+
     try {
       final compressed = CompressedTrackPoint.fromTrackPoint(point);
       final dirPath = _manager.userDir(phoneNumber);

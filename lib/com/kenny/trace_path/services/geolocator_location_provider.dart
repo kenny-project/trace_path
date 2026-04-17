@@ -6,12 +6,15 @@ import 'location_provider.dart';
 
 /// Geolocator 定位提供者实现
 /// 通过 Geolocator 包实现定位，策略：GPS → 网络 fallback
-/// 
+///
 /// 超时时间设置参考（来自高德/百度建议）：
 /// - GPS首次定位：通常30-60秒，信号差环境（地铁/室内）可能更长
 /// - 网络定位：10-15秒
 class GeolocatorLocationProvider implements LocationProvider {
   final ErrorLoggerService _errorLogger = ErrorLoggerService();
+
+  @override
+  String get name => 'GeolocatorLocationProvider';
 
   @override
   Future<Position?> getCurrentPosition({
@@ -158,7 +161,7 @@ class GeolocatorLocationProvider implements LocationProvider {
   }
 
   @override
-  Future<void> dispose() async {
+  void dispose() {
     // 无需清理资源
   }
 }
