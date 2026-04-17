@@ -100,18 +100,25 @@ class TrackService {
         // 3. (0,0) 海洋坐标过滤（GPS未锁定常见值）
         if (p.latitude == 0 && p.longitude == 0) continue;
 
-        // 4. 相邻点跳变过大检查
+        // 4. 相邻点跳变过大检查（仅对时间间隔<60秒的点进行）
         if (validPoints.isNotEmpty) {
-          const distance = Distance();
-          final jump = distance.as(
-            LengthUnit.Meter,
-            validPoints.last.toLatLng(),
-            p.toLatLng(),
-          );
-          if (jump > maxJumpMeters) {
-            print('[TrackService] 跳过跳变过大的点: ${jump.toStringAsFixed(0)}m');
-            continue;
+          final lastPoint = validPoints.last;
+          final timeDiffSeconds = p.timestamp.difference(lastPoint.timestamp).inSeconds;
+
+          // 时间间隔小于60秒才检查跳变，时间间隔长说明可能是GPS中断或移动了，不应过滤
+          if (timeDiffSeconds < 60) {
+            const distance = Distance();
+            final jump = distance.as(
+              LengthUnit.Meter,
+              lastPoint.toLatLng(),
+              p.toLatLng(),
+            );
+            if (jump > maxJumpMeters) {
+              print('[TrackService] 跳过跳变过大的点: ${jump.toStringAsFixed(0)}m (时间间隔: ${timeDiffSeconds}s)');
+              continue;
+            }
           }
+          // 时间间隔 >= 60秒，直接保留，不检查跳变
         }
 
         validPoints.add(p);

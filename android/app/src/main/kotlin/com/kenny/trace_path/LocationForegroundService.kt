@@ -15,7 +15,6 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.app.AlarmManager
-import android.content.Context
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.*

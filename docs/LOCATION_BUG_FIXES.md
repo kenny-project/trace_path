@@ -246,7 +246,75 @@ fusedLocationClient.requestLocationUpdates(
 
 ---
 
-## 六、测试验证清单
+## 六、Honor/Huawei 设备 GPS 节流问题（待解决）
+
+**问题等级**: 🔴 严重（系统级别限制）
+
+**问题描述**:
+即使使用了旧版 `LocationRequest` API 且应用已在电池白名单中，Honor 设备的系统级节流仍然影响定位功能：
+
+1. **FusedLocationProviderClient 回调被节流**
+   - GPS 硬件持续收到位置更新（GnssCallbackAidl 正常工作）
+   - 但 FusedLocationProviderClient 的回调被系统节流
+   - 表现为：长时间没有新位置推送
+
+2. **Handler 定时器被节流**
+   - 添加的 60 秒保活机制（Handler + getLastLocation）
+   - 实际运行时 60 秒定时器变成 ~180 秒才触发
+   - 说明 Honor 系统对 Handler 也有深层节流
+
+**问题现象（Logcat）**:
+```
+# GPS 硬件在报告位置
+GnssCallbackAidl: onGnssLocation result: lat=xx.x, lng=xx.x
+
+# 但 FLP 回调没有触发（被节流）
+# ... 长时间无日志 ...
+
+# 保活定时器也延迟了
+[保活] 触发延迟: actualDelay=178234ms (expected 60000ms)
+```
+
+**根因分析**:
+- Honor/Huawei 的系统级电源管理会在后台限制 GPS 活动
+- 即使应用在白名单中，系统仍会节流 GPS 回调和 Handler
+- 这是设备制造商的系统策略，无法通过代码绕过
+
+**已尝试的方案**:
+1. ✅ 改用旧版 LocationRequest API（部分有效，但仍有节流）
+2. ✅ 添加 Handler + getLastLocation 保活机制（Handler 本身也被节流）
+3. ❌ 无法通过代码请求加入更高级别的白名单
+
+**用户可执行的解决方案**:
+需要在设备设置中手动配置：
+1. **设置 → 电池 → 应用启动管理**
+   - 找到 TracePath
+   - 关闭"自动管理"，手动开启所有开关
+
+2. **设置 → 电池 → 更多电池设置**
+   - 关闭"限制后台进程"
+   - 确保"耗电异常优化"未激活
+
+3. **设置 → 应用 → TracePath → 电池**
+   - 选择"无限制"（允许后台活动）
+
+4. **部分 Honor 设备还需要**:
+   - **设置 → 电池 → 右上角 ⚙ → 关闭"智能限制"**
+   - **手机管家 → 应用启动管理 → 找到 TracePath → 手动管理**
+
+**如仍有问题**:
+1. 检查"手机管家"是否有独立的电源管理
+2. 部分设备需要在"开发者选项"中关闭"后台进程限制"
+3. 如果系统更新后问题加剧，可能需要恢复出厂设置（极端情况）
+
+**后续优化方向**:
+- 考虑添加"疑似被节流"时的用户提示
+- 记录每次 getLastLocation 的成功率，辅助诊断
+- 评估是否需要使用更耗电但更可靠的备选方案
+
+---
+
+## 七、测试验证清单
 
 - [ ] 精准模式（powerSaving=false）下 GPS 定位正常
 - [ ] 省电模式（powerSaving=true）下定位正常且耗电降低
@@ -258,3 +326,4 @@ fusedLocationClient.requestLocationUpdates(
 - [ ] 定位数据正确保存到本地
 - [ ] Honor 设备上定位信号稳定（60秒间隔）
 - [ ] Google Play 不再报高耗电警告
+- [ ] Honor 设备电池白名单配置正确后定位稳定
