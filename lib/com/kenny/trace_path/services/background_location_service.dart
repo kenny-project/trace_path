@@ -226,8 +226,9 @@ class BackgroundLocationService {
         'powerSaving': _powerSaving,
       });
 
-      // 注意：不要在这里调用 startListening()，避免重复取消 subscription
-      // EventChannel 监听已经在 init() 中注册
+      // 重新注册 EventChannel 监听（服务重启后需要恢复连接）
+      // 注意：会先取消旧订阅再创建新订阅，避免重复
+      _eventHandler.startListening();
 
       // 更新设置状态
       await _settingsService.update(enabled: true);
@@ -248,8 +249,9 @@ class BackgroundLocationService {
   /// 停止服务
   Future<void> stop() async {
     try {
-      // 取消 EventChannel 监听
-      await _eventHandler.stopListening();
+      // 注意：不在这里取消 EventChannel 订阅
+      // Kotlin 服务被停止时会自动清理 EventChannel（onCancel 会由系统调用）
+      // Flutter 侧的订阅会在 dispose() 时由 _locationUnsubscribe 取消
 
       await _settingsService.update(enabled: false);
       await _methodChannel.invokeMethod('stopLocationService');

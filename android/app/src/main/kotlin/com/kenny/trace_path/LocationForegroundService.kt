@@ -11,8 +11,11 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Binder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.app.AlarmManager
+import android.content.Context
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.*
@@ -99,6 +102,37 @@ class LocationForegroundService : Service() {
     private val SPEED_DRIVE = 8.0f           // m/s
     // 当前生效的间隔
     private var _currentIntervalMs = INTERVAL_STILL
+
+    // ========== 定位保活机制 ==========
+    // Honor 设备对 Handler 做系统级节流，改用 AlarmManager
+    private val ALIVE_INTERVAL_MS = 60_000L  // 60秒
+    private val ALIVE_REQUEST_CODE = 1001
+    private val _aliveHandler = Handler(Looper.getMainLooper())
+    private val _aliveRunnable = object : Runnable {
+        override fun run() {
+            if (!_isTrackingStatic.get()) return
+            Log.w(TAG, "[保活] 触发，主动拉取位置")
+            // 直接拉取最后已知位置并发送（绕过回调节流）
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                    if (location != null && _isTrackingStatic.get()) {
+                        Log.w(TAG, "[保活] getLastLocation 成功: lat=${location.latitude}, lng=${location.longitude}, accuracy=${location.accuracy}")
+                        handleLocationResult(location)
+                    } else {
+                        Log.w(TAG, "[保活] getLastLocation 返回 null，重新注册")
+                        reRegisterLocationUpdates()
+                    }
+                }.addOnFailureListener {
+                    Log.w(TAG, "[保活] getLastLocation 失败: ${it.message}，重新注册")
+                    reRegisterLocationUpdates()
+                }
+            } catch (e: SecurityException) {
+                Log.e(TAG, "[保活] SecurityException", e)
+            }
+            // 继续调度下次
+            _aliveHandler.postDelayed(this, ALIVE_INTERVAL_MS)
+        }
+    }
 
     // 获取当前网络精度阈值（省电模式时放宽）
     private fun getNetworkAccuracyThreshold(): Float {
@@ -246,6 +280,10 @@ class LocationForegroundService : Service() {
         // 启动定位更新
         requestLocationUpdates()
         Log.d(TAG, "startTracking: started with priority=$currentPriority")
+
+        // 启动保活定时器（每60秒主动拉取一次位置）
+        _aliveHandler.removeCallbacks(_aliveRunnable)
+        _aliveHandler.post(_aliveRunnable)
     }
 
     /**
@@ -293,6 +331,9 @@ class LocationForegroundService : Service() {
     private fun stopTracking() {
         Log.d(TAG, "stopTracking called")
         _isTrackingStatic.set(false)
+
+        // 停止保活定时器
+        _aliveHandler.removeCallbacks(_aliveRunnable)
 
         locationCallback?.let {
             try {
