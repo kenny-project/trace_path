@@ -377,6 +377,7 @@ class LocationForegroundService : Service() {
         lastProcessedTime = now
         lastProcessedAccuracy = accuracy
 
+        Log.d(TAG, "[同步] handleLocationResult: time=${location.time}, lat=${location.latitude}, lng=${location.longitude}")
         sendLocationToFlutter(location)
         updateNotification(location)
     }

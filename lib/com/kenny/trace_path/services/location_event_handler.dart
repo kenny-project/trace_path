@@ -66,7 +66,7 @@ class LocationEventHandler {
         return;
       }
 
-      Log.d(LogTag.location, '★ 收到EventChannel位置: lat=$latitude, lng=$longitude, acc=$accuracy');
+      Log.d(LogTag.location, '★ 收到EventChannel位置: lat=$latitude, lng=$longitude, acc=$accuracy, time=${timestamp != null ? DateTime.fromMillisecondsSinceEpoch(timestamp).toIso8601String() : "null"}');
 
       // 构造 Position 对象
       final position = Position(

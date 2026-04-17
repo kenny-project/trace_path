@@ -87,6 +87,8 @@ class _LocationPageState extends State<LocationPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _isPageActive = true;
+      // 切换回前台时，刷新UI显示最新数据
+      _loadSavedLocation();
     } else if (state == AppLifecycleState.paused) {
       _isPageActive = false;
     }
@@ -135,6 +137,7 @@ class _LocationPageState extends State<LocationPage>
   /// 先立即更新时间，再异步解析地址（避免地址解析阻塞时间更新）
   Future<void> _updateFriendLocation(double lat, double lng, DateTime timestamp) async {
     try {
+      print('[LocationPage] _updateFriendLocation: lat=$lat, lng=$lng, timestamp=${timestamp.toIso8601String()}');
       // 先立即更新位置和时间（不等待地址解析）
       await _friendService.updateFriendLocation(
         _friendService.getSelfPhone(),
@@ -194,10 +197,10 @@ class _LocationPageState extends State<LocationPage>
       if (position != null && mounted) {
         // 保存轨迹（WGS84 原始坐标）
         TrackRecorder().record(position);
-        
+
         // 显示时转换为 GCJ-02
         final gcj02 = _locationService.wgs84ToGcj02(position.latitude, position.longitude);
-        
+
         if (!_isInitialLocationLoaded) {
           setState(() {
             _myLat = gcj02[0];
@@ -206,7 +209,8 @@ class _LocationPageState extends State<LocationPage>
           });
           _mapController.move(LatLng(gcj02[0], gcj02[1]), 14);
         }
-        _updateFriendLocation(gcj02[0], gcj02[1], position.timestamp);
+        // 注意：这里不调用 _updateFriendLocation
+        // 位置数据通过 EventChannel 订阅由 _onLocationEvent 统一处理
       }
     } catch (e) {
       print('[LocationPage] _loadCurrentLocation error: $e');
