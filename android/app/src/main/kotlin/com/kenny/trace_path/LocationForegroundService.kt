@@ -66,12 +66,49 @@ class LocationForegroundService : Service() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private var locationCallback: LocationCallback? = null
 
-    // 定位模式切换状态(精准模式用)
-    private var currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY  // 默认网络定位
+    // 定位模式切换状态
+    private var currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY  // 默认网络定位省电
     private var lastGoodAccuracyTime = 0L  // 上次 accuracy < 30 的时间戳
     private var lastGpsFixTime = 0L        // 上次 GPS 有信号的时间戳
     private var lastProcessedTime = 0L      // 上次处理位置的时间戳(用于节流)
     private var lastProcessedAccuracy = 0f // 上次处理位置的 accuracy(用于比较)
+
+    // ========== 自适应省电策略 ==========
+    // 网络定位精度阈值：超过此值认为需要切换到 GPS 获取精确位置
+    private val NETWORK_ACCURACY_THRESHOLD = 100f  // 100m
+    // GPS 精度阈值：GPS 精度好于此值认为可以切回网络定位
+    private val GPS_ACCURACY_THRESHOLD = 50f  // 50m
+    // GPS 连续好精度次数阈值：达到此次数后才切回网络定位（避免频繁切换）
+    private val GPS_STABLE_COUNT_THRESHOLD = 3
+    // GPS 启动时间窗口：如果 GPS 连续多次精度差超过此时间（毫秒），自动切回网络定位
+    private val GPS_NO_FIX_TIMEOUT_MS = 120_000L  // 2分钟
+    private var _gpsStableCount = 0  // GPS 连续好精度次数
+
+    // ========== 速度自适应定位间隔 ==========
+    // 静止：< 1 m/s (3.6 km/h)
+    private val INTERVAL_STILL = 60_000L      // 60秒
+    // 步行：1-3 m/s (3.6-10.8 km/h)
+    private val INTERVAL_WALK = 30_000L       // 30秒
+    // 骑行：3-8 m/s (10.8-28.8 km/h)
+    private val INTERVAL_BIKE = 15_000L       // 15秒
+    // 驾车：> 8 m/s (28.8 km/h)
+    private val INTERVAL_DRIVE = 10_000L      // 10秒
+    // 速度阈值
+    private val SPEED_WALK = 1.0f            // m/s
+    private val SPEED_BIKE = 3.0f            // m/s
+    private val SPEED_DRIVE = 8.0f           // m/s
+    // 当前生效的间隔
+    private var _currentIntervalMs = INTERVAL_STILL
+
+    // 获取当前网络精度阈值（省电模式时放宽）
+    private fun getNetworkAccuracyThreshold(): Float {
+        return if (powerSaving) 80f else NETWORK_ACCURACY_THRESHOLD
+    }
+
+    // 获取当前 GPS 精度阈值（省电模式时放宽）
+    private fun getGpsAccuracyThreshold(): Float {
+        return if (powerSaving) 30f else GPS_ACCURACY_THRESHOLD
+    }
 
     // 旧版单次轮询线程引用(requestSingleLocation 保留,但不再用于主循环)
     private var locationThread: Thread? = null
@@ -113,6 +150,12 @@ class LocationForegroundService : Service() {
             ACTION_START -> {
                 intervalSeconds = intent.getIntExtra("interval", DEFAULT_INTERVAL_SECONDS)
                 powerSaving = intent.getBooleanExtra("powerSaving", DEFAULT_POWER_SAVING)
+                Log.d(TAG, "onStartCommand START: interval=${intervalSeconds}s, powerSaving=$powerSaving")
+                // 如果已经在追踪，先停止再重新启动，确保使用新参数
+                if (_isTrackingStatic.get() && locationCallback != null) {
+                    Log.d(TAG, "Already tracking, stopping first then restart with new config")
+                    stopTracking()
+                }
                 startTracking()
             }
             ACTION_STOP -> {
@@ -169,12 +212,11 @@ class LocationForegroundService : Service() {
         locationThread = null
         lastGoodAccuracyTime = 0L
         lastGpsFixTime = 0L
-        currentPriority = if (powerSaving) {
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY
-        } else {
-            // 精准模式默认用网络定位(保证有位置),等有好位置再切 GPS
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY
-        }
+        _gpsStableCount = 0
+        // 统一使用网络定位作为默认模式，省电且稳定
+        // 当网络定位精度变差时，handleLocationResult 会自动切换到 GPS
+        // 获得精确位置后自动切回网络定位
+        currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY
 
         _isTrackingStatic.set(true)
         startForeground(NOTIFICATION_ID, buildNotification())
@@ -182,6 +224,7 @@ class LocationForegroundService : Service() {
         // 创建 LocationCallback
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
+                Log.d(TAG, "[Callback] onLocationResult called, lastLocation=${result.lastLocation != null}")
                 result.lastLocation?.let { location ->
                     handleLocationResult(location)
                 }
@@ -189,9 +232,13 @@ class LocationForegroundService : Service() {
 
             override fun onLocationAvailability(availability: LocationAvailability) {
                 Log.d(TAG, "LocationAvailability: isLocationAvailable=${availability.isLocationAvailable}")
-                // GPS 信号不可用时记录时间
+                // GPS 信号不可用时记录时间（用于超时判断）
                 if (!availability.isLocationAvailable && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
                     lastGpsFixTime = System.currentTimeMillis()
+                }
+                // GPS 信号恢复时，清零时间（表示有 GPS 信号了）
+                if (availability.isLocationAvailable) {
+                    lastGpsFixTime = 0L
                 }
             }
         }
@@ -216,21 +263,19 @@ class LocationForegroundService : Service() {
             return
         }
 
-        val actualInterval = if (powerSaving) {
-            maxOf(intervalSeconds, 60) * 1000L
-        } else {
-            intervalSeconds * 1000L
-        }
-        // 测试一下,默认使用高精定位
-        currentPriority = Priority.PRIORITY_HIGH_ACCURACY;
-        val builder = LocationRequest.Builder(currentPriority, actualInterval)
-            .setMinUpdateIntervalMillis(1000)
-            // 配合距离过滤,防止网络定位把你"瞬移"到别处
-            .setMinUpdateDistanceMeters(1.0f)
+        // 使用速度自适应的间隔
+        val actualInterval = _currentIntervalMs
 
         try {
+            // Honor 设备使用旧版 LocationRequest API 更稳定
+            @Suppress("DEPRECATION")
+            val locationRequest = LocationRequest()
+            locationRequest.priority = currentPriority
+            locationRequest.interval = actualInterval
+            locationRequest.fastestInterval = 10000  // 10秒，防止过慢
+
             fusedLocationClient.requestLocationUpdates(
-                builder.build(),
+                locationRequest,
                 locationCallback!!,
                 Looper.getMainLooper()
             )
@@ -274,56 +319,134 @@ class LocationForegroundService : Service() {
         Log.d(TAG, "handleLocationResult: pos=${location.longitude},${location.latitude}, isGps=${isGps}, accuracy =${accuracy}")
 
         // --- 1. 基础清洗 ---
-        if (accuracy <= 0f || accuracy > 200f) { // 大于200米的直接不要，太离谱
+        // 放宽到 500m，避免在城市峡谷等信号差环境完全丢失位置
+        if (accuracy <= 0f || accuracy > 500f) {
             Log.e(TAG, "[DISCARD] accuracy无效: ${accuracy}m, provider=${location.provider}, lat=${location.latitude}, lng=${location.longitude}")
             return
         }
 
-        // --- 2. 距离+时间 双重防抖动 (核心修改) ---
+        // 速度信息（用于调试）
+        val speed = if (location.hasSpeed()) location.speed else -1f
+        Log.d(TAG, "[位置] lat=${location.latitude}, lng=${location.longitude}, speed=${speed}m/s, accuracy=${accuracy}m, provider=${location.provider}")
+
+        // --- 2. 距离+时间 双重防抖动 ---
         if (lastLocation != null) {
             val timeDelta = now - lastProcessedTime
             val distanceDelta = lastLocation?.distanceTo(location) ?: 0f
-            
-            // 如果时间间隔很短（<1.5秒）且 距离很近（<2米），视为原地噪点
-            if (timeDelta < 1500 && distanceDelta < 2.0f) {
+
+            // 放宽条件到 2秒/3米，避免静止时被误判为抖动
+            if (timeDelta < 2000 && distanceDelta < 3.0f) {
                 Log.e(TAG, "[DISCARD] 原地抖动: 间隔=${timeDelta}ms, 距离=${distanceDelta}m, accuracy=${accuracy}m")
                 return
             }
         }
 
         // --- 3. 分级过滤策略 ---
-        // 策略 A: 如果是 GPS，允许稍微大一点的误差，因为它是连续的
+        // 策略 A: 如果是 GPS，放宽到 200m（信号差环境如城市峡谷也能接受）
         if (isGps) {
-            if (accuracy > 100f) { // 放宽到 100米，防止轨迹中断
+            if (accuracy > 200f) {
                 Log.e(TAG, "[DISCARD] GPS精度差: accuracy=${accuracy}m")
                 return
             }
         }
-        // 策略 B: 如果是网络定位，必须非常准才要
+        // 策略 B: 如果是网络定位，放宽到 300m（城市网络定位通常 100-300m）
         else {
-            if (accuracy > 100f) { // 网络定位超过200米通常不可信
+            if (accuracy > 300f) {
                 Log.e(TAG, "[DISCARD] 网络定位精度差: accuracy=${accuracy}m")
                 return
             }
         }
 
-        // --- 4. 记录数据 ---
+        // --- 4. 自适应省电策略 ---
+        // 根据 accuracy 动态切换定位源，降低耗电
+        evaluateAndSwitchPriority(isGps, accuracy, now)
+
+        // --- 5. 速度自适应定位间隔（暂时禁用，调试用）---
+        // TODO: 速度自适应导致问题，暂时禁用
+        // val newInterval = calculateDynamicInterval(location)
+        // if (newInterval != _currentIntervalMs) {
+        //     Log.d(TAG, "[速度自适应] 间隔变化: ${_currentIntervalMs}ms -> ${newInterval}ms, speed=${speed}m/s")
+        //     _currentIntervalMs = newInterval
+        //     runOnMainThread {
+        //         reRegisterLocationUpdates()
+        //     }
+        // }
+
+        // --- 6. 记录数据 ---
         lastLocation = location
         lastProcessedTime = now
         lastProcessedAccuracy = accuracy
-        
+
         sendLocationToFlutter(location)
         updateNotification(location)
+    }
 
-        // --- 5. 动态策略 (建议简化) ---
-        // 除非你非常清楚自己在做什么，否则建议：
-        // 一旦开始记录，就尽量保持在 HIGH_ACCURACY，不要轻易切回 BALANCED
-        // 如果这里保留逻辑，建议加一个"滞后阈值"，防止反复横跳
-        if (!powerSaving) {
-            if (isGps && accuracy > 100f && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
-                 // 只有 GPS 真的很差，且持续一段时间，才考虑降级（这里暂不实现降级，建议直接忽略坏点）
-                 Log.d(TAG, "GPS信号差，但保持 GPS 模式以避免网络跳变")
+    /**
+     * 评估是否需要切换定位源
+     * 策略：
+     * 1. 如果当前是网络定位，且精度 > 100m，切换到 GPS 获取精确位置
+     * 2. 如果当前是 GPS 定位，且连续 3 次精度 < 50m，切回网络定位省电
+     * 3. 如果 GPS 连续 2 分钟精度都差，自动切回网络定位
+     */
+    private fun evaluateAndSwitchPriority(isGps: Boolean, accuracy: Float, now: Long) {
+        val currentMode = if (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) "GPS" else "网络"
+        Log.d(TAG, "[自适应] evaluateAndSwitchPriority: currentMode=$currentMode, isGps=$isGps, accuracy=$accuracy")
+
+        val networkThreshold = getNetworkAccuracyThreshold()
+        val gpsThreshold = getGpsAccuracyThreshold()
+
+        if (currentPriority == Priority.PRIORITY_BALANCED_POWER_ACCURACY) {
+            // 当前是网络定位，检查是否需要切换到 GPS
+            if (accuracy > networkThreshold) {
+                Log.d(TAG, "[自适应] 网络定位精度=${accuracy}m > ${networkThreshold}m，切换到 GPS")
+                switchToHighAccuracy()
             }
+        } else {
+            // 当前是 GPS 定位，检查是否可以切回网络定位
+            if (isGps && accuracy <= gpsThreshold) {
+                _gpsStableCount++
+                Log.d(TAG, "[自适应] GPS 精度好=${accuracy}m (${_gpsStableCount}/${GPS_STABLE_COUNT_THRESHOLD})")
+                if (_gpsStableCount >= GPS_STABLE_COUNT_THRESHOLD) {
+                    Log.d(TAG, "[自适应] GPS 连续${_gpsStableCount}次精度好，切回网络定位省电")
+                    _gpsStableCount = 0
+                    switchToBalanced()
+                }
+            } else if (isGps && accuracy > gpsThreshold) {
+                _gpsStableCount = 0
+            }
+
+            // 检查 GPS 是否长时间没有好精度
+            if (isGps && lastGpsFixTime > 0) {
+                val gpsNoFixDuration = now - lastGpsFixTime
+                if (gpsNoFixDuration > GPS_NO_FIX_TIMEOUT_MS) {
+                    Log.d(TAG, "[自适应] GPS 连续${gpsNoFixDuration}ms精度差，切回网络定位")
+                    _gpsStableCount = 0
+                    switchToBalanced()
+                }
+            }
+        }
+    }
+
+    /**
+     * 根据速度计算动态定位间隔
+     * 静止时降低频率省电，移动时提高频率保证轨迹精度
+     */
+    private fun calculateDynamicInterval(location: Location): Long {
+        val speed = location.speed
+
+        // 如果 speed < 0，使用默认静止间隔
+        if (speed < 0 || !location.hasSpeed()) {
+            return INTERVAL_STILL
+        }
+
+        // 省电模式：整体增加间隔
+        val multiplier = if (powerSaving) 2 else 1
+
+        return when {
+            speed < SPEED_WALK -> INTERVAL_STILL * multiplier
+            speed < SPEED_BIKE -> INTERVAL_WALK * multiplier
+            speed < SPEED_DRIVE -> INTERVAL_BIKE * multiplier
+            else -> INTERVAL_DRIVE * multiplier
         }
     }
 
@@ -331,21 +454,27 @@ class LocationForegroundService : Service() {
      * 切换到高精度 GPS 定位
      */
     private fun switchToHighAccuracy() {
-        if (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) return
+        if (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
+            Log.d(TAG, "[切换] switchToHighAccuracy: 已是GPS模式，跳过")
+            return
+        }
+        Log.d(TAG, "[切换] switchToHighAccuracy: 从${currentPriority}切换到GPS")
         currentPriority = Priority.PRIORITY_HIGH_ACCURACY
         lastGoodAccuracyTime = System.currentTimeMillis()
         reRegisterLocationUpdates()
-        Log.d(TAG, "switchToHighAccuracy: done")
     }
 
     /**
      * 切换到网络定位(地下室等无 GPS 信号场景)
      */
     private fun switchToBalanced() {
-        if (currentPriority == Priority.PRIORITY_BALANCED_POWER_ACCURACY) return
+        if (currentPriority == Priority.PRIORITY_BALANCED_POWER_ACCURACY) {
+            Log.d(TAG, "[切换] switchToBalanced: 已是网络模式，跳过")
+            return
+        }
+        Log.d(TAG, "[切换] switchToBalanced: 从${currentPriority}切换到网络")
         currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY
         reRegisterLocationUpdates()
-        Log.d(TAG, "switchToBalanced: done")
     }
 
     /**
@@ -569,9 +698,9 @@ class LocationForegroundService : Service() {
      */
     private fun buildNotification(loc: Location? = null): Notification {
         val status = if (_isTrackingStatic.get()) "运行中" else "已停止"
-        val mode = if (powerSaving) "省电模式 ${maxOf(intervalSeconds, 60)}秒" else "精准模式 ${intervalSeconds}秒"
+        val mode = if (powerSaving) "省电" else "常态"
         val isGps = (loc ?: lastLocation)?.provider == LocationManager.GPS_PROVIDER
-        val source = if (isGps) "GPS" else "网络"
+        val source = if (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) "GPS" else "网络"
         val locationText = lastLocation?.let {
             String.format("位置: %.6f, %.6f", it.latitude, it.longitude)
         } ?: "位置: 获取中..."

@@ -162,14 +162,17 @@ class FriendService {
   }
 
   /// 更新好友位置
-  Future<void> updateFriendLocation(String phoneNumber, double lat, double lng, {String? address}) async {
+  /// [preserveTime] 当只更新地址时，是否保留原有时间戳（避免UI时间跳变）
+  Future<void> updateFriendLocation(String phoneNumber, double lat, double lng, {String? address, bool preserveTime = false, DateTime? timestamp}) async {
     final index = _friends.indexWhere((f) => f.phoneNumber == phoneNumber);
     if (index != -1) {
-      _friends[index] = _friends[index].copyWith(
+      final existing = _friends[index];
+      final newTime = preserveTime ? existing.lastUpdateTime : (timestamp ?? DateTime.now());
+      _friends[index] = existing.copyWith(
         lat: lat,
         lng: lng,
         address: address,
-        lastUpdateTime: DateTime.now(),
+        lastUpdateTime: newTime,
       );
       await _save();
     }

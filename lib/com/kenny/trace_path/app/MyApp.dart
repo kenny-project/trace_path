@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../ui/home/pages/home_page.dart';
+import '../services/background_location_service.dart';
 import '../services/error_logger_service.dart';
 
 class MyApp extends StatefulWidget {
@@ -16,12 +17,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _logStart();
+    _initializeServices();
   }
 
-  Future<void> _logStart() async {
+  /// 初始化核心服务
+  /// 在应用启动时立即初始化，避免依赖特定页面
+  Future<void> _initializeServices() async {
     await _errorLogger.init();
-    await _errorLogger.logAppStart();
+    _errorLogger.logAppStart();
+    // 初始化定位服务（后台启动，不阻塞 UI）
+    BackgroundLocationService().init().catchError((e) {
+      _errorLogger.logService(action: 'APP_INIT_FAILED', extra: 'error=$e');
+    });
   }
 
   @override

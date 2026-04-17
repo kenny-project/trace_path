@@ -59,11 +59,18 @@ class BackgroundLocationService {
 
   // ========== 服务状态 ==========
   bool _isServiceRunning = false;
+  bool _isInitialized = false;
   int _intervalSeconds = 30;
   bool _powerSaving = false;
 
   // ========== 初始化 ==========
   Future<void> init() async {
+    if (_isInitialized) {
+      Log.w(LogTag.service, 'init() 已调用，忽略重复调用');
+      return;
+    }
+    _isInitialized = true;
+
     Log.i(LogTag.service, '★★★ init() START ★★★');
     await _settingsService.load();
     await _errorLogger.init();
@@ -87,13 +94,14 @@ class BackgroundLocationService {
     Log.i(LogTag.service, 'init: _requestAndBroadcastCurrentLocation done');
 
     // 注册 EventChannel 监听（Flutter 启动时就注册，不管服务有没有启动）
+    // 注意：不要在 start() 中再次调用，避免重复取消 subscription
     Log.i(LogTag.service, 'init: calling _listenToLocationEvents...');
     _eventHandler.startListening();
     Log.i(LogTag.service, 'init: _listenToLocationEvents done');
 
-    // 启动服务（打开应用时默认开启）
+    // 启动服务（打开应用时默认开启）- 等待完成确保原生服务启动
     Log.i(LogTag.service, 'init: calling start()...');
-    start(); // 不 await，服务启动在后台进行
+    await start();
     Log.i(LogTag.service, '★★★ init() END ★★★');
   }
 
@@ -192,8 +200,8 @@ class BackgroundLocationService {
         'powerSaving': _powerSaving,
       });
 
-      // 监听原生服务推送的位置（通过 EventChannel）
-      _eventHandler.startListening();
+      // 注意：不要在这里调用 startListening()，避免重复取消 subscription
+      // EventChannel 监听已经在 init() 中注册
 
       // 更新设置状态
       await _settingsService.update(enabled: true);

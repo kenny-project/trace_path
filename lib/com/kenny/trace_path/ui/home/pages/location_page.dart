@@ -94,25 +94,27 @@ class _LocationPageState extends State<LocationPage>
 
   /// 处理定位事件（来自 BackgroundLocationService 广播）
   void _onLocationEvent(LocationEvent event) {
-    if (!_isPageActive) return;
-    
     switch (event.type) {
       case LocationEventType.locationUpdate:
         if (event.position != null) {
           final position = event.position!;
-          
+
           // 保存轨迹（WGS84 原始坐标）
           TrackRecorder().record(position);
-          
+
           // 显示时转换为 GCJ-02（高德地图坐标）
           final gcj02 = _locationService.wgs84ToGcj02(position.latitude, position.longitude);
-          
-          setState(() {
-            _myLat = gcj02[0];
-            _myLng = gcj02[1];
-            _isLoadingLocation = false;
-          });
-          _updateFriendLocation(gcj02[0], gcj02[1]);
+
+          // 只在页面可见时更新UI
+          if (_isPageActive) {
+            setState(() {
+              _myLat = gcj02[0];
+              _myLng = gcj02[1];
+              _isLoadingLocation = false;
+            });
+          }
+          // 数据更新不限于页面可见（后台也要更新，否则返回前台时间不刷新）
+          _updateFriendLocation(gcj02[0], gcj02[1], position.timestamp);
         }
         break;
       case LocationEventType.serviceStart:
@@ -129,8 +131,9 @@ class _LocationPageState extends State<LocationPage>
 
   /// 更新好友位置和地址
   /// lat/lng: GCJ-02 坐标（用于显示）
+  /// timestamp: 定位时间戳（从定位模块直接传入）
   /// 先立即更新时间，再异步解析地址（避免地址解析阻塞时间更新）
-  Future<void> _updateFriendLocation(double lat, double lng) async {
+  Future<void> _updateFriendLocation(double lat, double lng, DateTime timestamp) async {
     try {
       // 先立即更新位置和时间（不等待地址解析）
       await _friendService.updateFriendLocation(
@@ -138,6 +141,7 @@ class _LocationPageState extends State<LocationPage>
         lat,
         lng,
         address: null,
+        timestamp: timestamp,
       );
 
       // 异步解析地址，完成后补上
@@ -157,6 +161,7 @@ class _LocationPageState extends State<LocationPage>
         lat,
         lng,
         address: address,
+        preserveTime: true, // 保留原有时间戳，避免地址解析覆盖
       );
     } catch (e) {
       // 地址解析失败静默忽略，位置和时间已更新
@@ -201,7 +206,7 @@ class _LocationPageState extends State<LocationPage>
           });
           _mapController.move(LatLng(gcj02[0], gcj02[1]), 14);
         }
-        _updateFriendLocation(gcj02[0], gcj02[1]);
+        _updateFriendLocation(gcj02[0], gcj02[1], position.timestamp);
       }
     } catch (e) {
       print('[LocationPage] _loadCurrentLocation error: $e');
