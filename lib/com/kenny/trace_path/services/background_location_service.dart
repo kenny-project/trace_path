@@ -78,6 +78,9 @@ class BackgroundLocationService {
     _initLocationProvider();
     Log.i(LogTag.service, 'init: _initLocationProvider done');
 
+    // 启动时检查并申请权限（如果未授权则引导用户授权）
+    await _ensurePermissions();
+
     // 设置事件处理器回调
     _eventHandler.onLocationEvent = (event) {
       _broadcast(event);
@@ -163,14 +166,37 @@ class BackgroundLocationService {
     }
   }
 
+  /// 确保应用拥有所需权限（启动时调用）
+  /// checkPermission() 会自动请求权限，所以这里只检查最终结果
+  Future<void> _ensurePermissions() async {
+    // 检查定位权限（内部会自动请求）
+    final hasLocation = await _locationProvider?.checkPermission() ?? false;
+    if (!hasLocation) {
+      Log.w(LogTag.location, '_ensurePermissions: 定位权限被拒绝');
+      await _errorLogger.logPermission(permission: 'LOCATION', reason: 'PERMISSION_DENIED_AT_INIT');
+    }
+
+    // 检查通知权限（Android 13+）
+    if (Platform.isAndroid) {
+      final notifStatus = await Permission.notification.status;
+      if (notifStatus.isDenied) {
+        final result = await Permission.notification.request();
+        if (!result.isGranted) {
+          Log.w(LogTag.location, '_ensurePermissions: 通知权限被拒绝');
+          await _errorLogger.logPermission(permission: 'NOTIFICATION', reason: 'PERMISSION_DENIED_AT_INIT');
+        }
+      }
+    }
+  }
+
   // ========== 服务控制 ==========
   /// 启动服务
   Future<bool> start() async {
     try {
-      // 检查权限
+      // 检查定位权限（内部会自动请求）
       final hasPermission = await _locationProvider?.checkPermission() ?? false;
       if (!hasPermission) {
-        Log.w(LogTag.location, 'start: 权限检查失败');
+        Log.w(LogTag.location, 'start: 定位权限被拒绝');
         await _errorLogger.logPermission(permission: 'LOCATION', reason: 'PERMISSION_DENIED');
         _broadcast(LocationEvent.error('定位权限被拒绝'));
         return false;
@@ -267,8 +293,10 @@ class BackgroundLocationService {
   Future<bool> checkRunning() async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('isLocationServiceRunning');
+      Log.d(LogTag.service, 'checkRunning: result=$result');
       return result ?? false;
-    } catch (e) {
+    } catch (e, s) {
+      Log.e(LogTag.service, 'checkRunning 异常', e, s);
       return false;
     }
   }

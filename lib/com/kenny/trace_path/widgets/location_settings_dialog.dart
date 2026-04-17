@@ -138,7 +138,7 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
                               color: Colors.white,
                             ),
                           )
-                        : Text(_isServiceRunning ? '保存' : '启动定位'),
+                        : const Text('保存'),
                   ),
                 ),
               ],
@@ -201,7 +201,12 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
           Switch(
             value: _isServiceRunning,
             activeColor: AppColors.primary,
-            onChanged: null, // 禁用滑动，通过按钮操作
+            onChanged: _isLoading
+                ? null
+                : (value) async {
+                    setState(() => _isServiceRunning = value);
+                    await _onServiceToggleChanged(value);
+                  },
           ),
         ],
       ),
@@ -315,6 +320,37 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
         ],
       ),
     );
+  }
+
+  Future<void> _onServiceToggleChanged(bool enabled) async {
+    setState(() => _isLoading = true);
+
+    try {
+      if (enabled) {
+        // 启动服务
+        await widget.settingsService.update(
+          enabled: true,
+          powerSaving: _powerSaving,
+        );
+        await widget.locationService.start();
+      } else {
+        // 停止服务
+        await widget.settingsService.update(enabled: false);
+        await widget.locationService.stop();
+      }
+      // 重新检查状态
+      await _checkServiceRunning();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('操作失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+      // 出错时恢复状态
+      await _checkServiceRunning();
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _onConfirm() async {

@@ -36,7 +36,7 @@ abstract class LocationProvider {
     Duration? timeLimit,
   });
 
-  /// 检查定位权限
+  /// 检查定位权限（无权限时自动请求）
   /// 返回 true 表示有权限
   Future<bool> checkPermission();
 

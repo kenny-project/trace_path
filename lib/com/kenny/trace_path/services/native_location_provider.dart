@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'error_logger_service.dart';
 import 'location_provider.dart';
 
@@ -138,8 +139,13 @@ class NativeLocationProvider implements LocationProvider {
   @override
   Future<bool> checkPermission() async {
     try {
-      final result = await _channel.invokeMethod<bool>('checkPermission');
-      return result ?? false;
+      var permission = await Permission.location.status;
+      if (permission.isDenied) {
+        permission = await Permission.location.request();
+        if (permission.isDenied) return false;
+      }
+      if (permission.isPermanentlyDenied) return false;
+      return true;
     } catch (e) {
       print('[NativeLocationProvider] checkPermission 异常: $e');
       return false;
