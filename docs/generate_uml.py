@@ -585,7 +585,7 @@ def generate_sequence_diagram():
     msg(ax, 8.5, y, 11.0, y, 'Network.getCurrentPosition()', color='#E65100', dashed=True)
     ret_msg(ax, 11.0, y-0.15, 8.5, y-0.35, 'Position / null', color='#9E9E9E')
 
-    # Step 8: return to BLS
+    # Step 8: return to FBLS
     y = 6.4
     ret_msg(ax, 8.5, y, 5.5, y+0.2, 'Position?')
 

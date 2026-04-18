@@ -5,7 +5,10 @@
       "Bash(pkill -f gradle)",
       "Read(//home/wmh/Documents/android/location-samples/LocationAddress/app/src/main/java/com/google/android/gms/location/sample/locationaddress/data/**)",
       "Bash(adb -d logcat)",
-      "Bash(adb uninstall *)"
+      "Bash(adb uninstall *)",
+      "Bash(export PUB_HOSTED_URL=https://pub.dev)",
+      "Bash(export FLUTTER_STORAGE_BASE_URL=https://storage.googleapis.com/flutter_infra_release)",
+      "Bash(git push *)"
     ],
     "additionalDirectories": [
       "/home/wmh/.gradle/wrapper/dists/gradle-8.14-all/c2qonpi39x1mddn7hk5gh9iqj"

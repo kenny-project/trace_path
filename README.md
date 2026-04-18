@@ -63,6 +63,7 @@ flutter run -d linux
 
 # 运行 Android 真机 应用
 flutter run -d "MEY AN00"
+flutter run -d "YAL AL00"
 
 # 备份 Android 应用数据
 adb backup -f trace_path_backup.ab -noapk com.example.trace_path

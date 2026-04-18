@@ -110,7 +110,7 @@ final wgs84 = _locationService.gcj02ToWgs84(gcjLat, gcjLng);
 
 查看日志中坐标变化：
 ```
-[BLS] 定位成功: lat=39.9..., lng=116.3...  // WGS84 原始坐标
+[FBLS] 定位成功: lat=39.9..., lng=116.3...  // WGS84 原始坐标
 [LocationPage] 显示坐标: lat=39.9..., lng=116.3...  // GCJ-02 显示坐标
 ```
 

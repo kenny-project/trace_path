@@ -122,9 +122,9 @@ class Log {
 
 class LogTag {
   static const debug = LogTag('DEBUG', '🔍');
-  static const location = LogTag('LOCATION', '📍');
+  static const location = LogTag('FBLS', '📍');
   static const track = LogTag('TRACK', '🛤️');
-  static const service = LogTag('SERVICE', '⚙️');
+  static const service = LogTag('FBLS', '⚙️');
   // ...
 }
 ```

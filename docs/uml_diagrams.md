@@ -214,7 +214,7 @@ graph TB
     end
 
     subgraph Business["⚙️ Business Logic Layer（业务逻辑层）"]
-        BLS["BackgroundLocationService（单例）"]
+        FBLS["BackgroundLocationService（单例）"]
         TR["TrackRecorder（单例）"]
         FS["FriendService（单例）"]
         US["UserService（单例）"]
@@ -243,15 +243,15 @@ graph TB
     end
 
     %% Presentation -> Business
-    HomePage --> BLS
+    HomePage --> FBLS
     HomePage --> TR
     HomePage --> FS
     HomePage --> US
 
     %% Business -> Abstraction
-    BLS --> LP
-    BLS --> LSS
-    BLS --> ELS
+    FBLS --> LP
+    FBLS --> LSS
+    FBLS --> ELS
     TR --> TS
     TR --> US
     FS --> FST
@@ -268,8 +268,8 @@ graph TB
 
     %% Abstraction -> Native
     LP --> FusedLocation
-    BLS --> AndroidService
-    BLS --> MethodChannel
+    FBLS --> AndroidService
+    FBLS --> MethodChannel
 
     %% Native -> Platform
     AndroidService --> FusedLocation
