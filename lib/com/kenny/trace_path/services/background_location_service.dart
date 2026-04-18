@@ -73,6 +73,7 @@ class BackgroundLocationService {
 
     Log.i(LogTag.service, '★★★ init() START ★★★');
     await _settingsService.load();
+    _applyAddressResolverFromSettings();
     await _errorLogger.init();
     await _errorLogger.logService(action: 'INIT');
     _initLocationProvider();
@@ -124,6 +125,12 @@ class BackgroundLocationService {
     } catch (e, s) {
       Log.e(LogTag.location, '主动请求位置失败', e, s);
     }
+  }
+
+  void _applyAddressResolverFromSettings() {
+    final resolverType = _settingsService.settings.addressResolverType;
+    AddressResolver.setResolverType(resolverType);
+    Log.i(LogTag.network, '地址解析器已应用: $resolverType (${AddressResolver().name})');
   }
 
   void _initLocationProvider() {

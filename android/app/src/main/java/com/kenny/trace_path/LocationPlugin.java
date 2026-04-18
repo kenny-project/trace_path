@@ -2,12 +2,17 @@ package com.kenny.trace_path;
 
 import android.content.Context;
 import android.content.Intent;
+import android.location.Geocoder;
 import android.os.Build;
 import android.util.Log;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * 定位服务 MethodChannel 处理器
@@ -18,19 +23,23 @@ public class LocationPlugin {
 
     public static final String METHOD_CHANNEL_NAME = "com.kenny.trace_path/location_service";
     public static final String EVENT_CHANNEL_NAME = "com.kenny.trace_path/location_events";
+    public static final String GEOCODER_CHANNEL_NAME = "com.kenny.trace_path/geocoder_service";
 
     private static final int DEFAULT_INTERVAL = 30;
     private static final boolean DEFAULT_POWER_SAVING = false;
 
     private EventChannel eventChannel;
     private MethodChannel methodChannel;
+    private MethodChannel geocoderChannel;
     private EventChannel.EventSink eventSink;
     private Intent serviceIntent;
     private EventChannel.StreamHandler streamHandler;
     private final Context context;
+    private Geocoder geocoder;
 
     public LocationPlugin(Context context) {
         this.context = context;
+        this.geocoder = new Geocoder(context, Locale.getDefault());
     }
 
     public void registerWith(FlutterEngine flutterEngine) {
@@ -61,6 +70,13 @@ public class LocationPlugin {
                 METHOD_CHANNEL_NAME
         );
         methodChannel.setMethodCallHandler((call, result) -> handleMethodCall(call, result));
+
+        // Geocoder MethodChannel for native Android reverse geocoding
+        geocoderChannel = new MethodChannel(
+                flutterEngine.getDartExecutor().getBinaryMessenger(),
+                GEOCODER_CHANNEL_NAME
+        );
+        geocoderChannel.setMethodCallHandler((call, result) -> handleGeocoderMethodCall(call, result));
 
         notifyServiceEventSinkReady();
         Log.d(TAG, "LocationPlugin registered");
@@ -114,6 +130,63 @@ public class LocationPlugin {
             default:
                 result.notImplemented();
                 break;
+        }
+    }
+
+    private void handleGeocoderMethodCall(MethodCall call, MethodChannel.Result result) {
+        Log.d(TAG, "handleGeocoderMethodCall: method=" + call.method + ", args=" + call.arguments);
+
+        switch (call.method) {
+            case "getAddressFromLatLng":
+                Double lat = call.argument("latitude");
+                Double lng = call.argument("longitude");
+                if (lat == null || lng == null) {
+                    result.error("INVALID_ARGS", "latitude and longitude are required", null);
+                    return;
+                }
+                getAddressFromLatLng(lat, lng, result);
+                break;
+
+            default:
+                result.notImplemented();
+                break;
+        }
+    }
+
+    private void getAddressFromLatLng(double latitude, double longitude, MethodChannel.Result result) {
+        Log.d(TAG, "getAddressFromLatLng: lat=" + latitude + ", lng=" + longitude);
+
+        if (!Geocoder.isPresent()) {
+            Log.w(TAG, "Geocoder is not present on this device");
+            result.success(null);
+            return;
+        }
+
+        try {
+            List<android.location.Address> addresses = geocoder.getFromLocation(latitude, longitude, 1);
+            if (addresses != null && !addresses.isEmpty()) {
+                android.location.Address address = addresses.get(0);
+                StringBuilder sb = new StringBuilder();
+
+                // Build formatted address from address lines
+                for (int i = 0; i <= address.getMaxAddressLineIndex(); i++) {
+                    if (i > 0) sb.append("\n");
+                    sb.append(address.getAddressLine(i));
+                }
+
+                String formattedAddress = sb.toString();
+                Log.d(TAG, "Geocoder result: " + formattedAddress);
+                result.success(formattedAddress);
+            } else {
+                Log.d(TAG, "Geocoder returned no addresses");
+                result.success(null);
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Geocoder.getFromLocation failed", e);
+            result.error("GEOCODER_ERROR", e.getMessage(), null);
+        } catch (Exception e) {
+            Log.e(TAG, "getAddressFromLatLng unexpected error", e);
+            result.error("UNKNOWN_ERROR", e.getMessage(), null);
         }
     }
 

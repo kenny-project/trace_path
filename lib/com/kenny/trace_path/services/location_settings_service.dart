@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'address_resolver_base.dart';
 
 /// 定位设置持久化
 /// 存放在应用文件目录/location_settings.json
@@ -40,10 +41,12 @@ class LocationSettingsService {
     bool? enabled,
     int? intervalSeconds,
     bool? powerSaving,
+    AddressResolverType? addressResolverType,
   }) async {
     if (enabled != null) settingsField.enabled = enabled;
     if (intervalSeconds != null) settingsField.intervalSeconds = intervalSeconds;
     if (powerSaving != null) settingsField.powerSaving = powerSaving;
+    if (addressResolverType != null) settingsField.addressResolverType = addressResolverType;
     await save();
   }
 }
@@ -53,6 +56,7 @@ class TracePathLocationSettings {
   bool enabled; // 是否开启实时定位
   int intervalSeconds; // 定位频率（秒）
   bool powerSaving; // 省电模式
+  AddressResolverType addressResolverType; // 地址解析器类型
 
   // 备用字段（方便后续扩展）
   Map<String, dynamic> extra;
@@ -61,6 +65,7 @@ class TracePathLocationSettings {
     required this.enabled,
     required this.intervalSeconds,
     required this.powerSaving,
+    required this.addressResolverType,
     this.extra = const {},
   });
 
@@ -69,6 +74,7 @@ class TracePathLocationSettings {
       enabled: false,
       intervalSeconds: 30,
       powerSaving: false,
+      addressResolverType: AddressResolverType.android,
     );
   }
 
@@ -77,6 +83,10 @@ class TracePathLocationSettings {
       enabled: json['enabled'] as bool? ?? false,
       intervalSeconds: json['intervalSeconds'] as int? ?? 30,
       powerSaving: json['powerSaving'] as bool? ?? false,
+      addressResolverType: AddressResolverType.values.firstWhere(
+        (e) => e.name == json['addressResolverType'],
+        orElse: () => AddressResolverType.android,
+      ),
       extra: (json['extra'] as Map<String, dynamic>?) ?? {},
     );
   }
@@ -86,6 +96,7 @@ class TracePathLocationSettings {
       'enabled': enabled,
       'intervalSeconds': intervalSeconds,
       'powerSaving': powerSaving,
+      'addressResolverType': addressResolverType.name,
       'extra': extra,
     };
   }
@@ -94,11 +105,13 @@ class TracePathLocationSettings {
     bool? enabled,
     int? intervalSeconds,
     bool? powerSaving,
+    AddressResolverType? addressResolverType,
   }) {
     return TracePathLocationSettings(
       enabled: enabled ?? this.enabled,
       intervalSeconds: intervalSeconds ?? this.intervalSeconds,
       powerSaving: powerSaving ?? this.powerSaving,
+      addressResolverType: addressResolverType ?? this.addressResolverType,
       extra: extra,
     );
   }

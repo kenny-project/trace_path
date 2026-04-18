@@ -269,6 +269,7 @@ public class LocationForegroundService extends Service {
         long actualInterval = _currentIntervalMs;
 
         try {
+            Log.d(TAG, "requestLocationUpdates: registered with priority=" + currentPriority + ", interval=" + actualInterval + "ms");
             LocationRequest locationRequest = LocationRequest.create()
                     .setPriority(currentPriority)
                     .setInterval(actualInterval)
@@ -279,7 +280,6 @@ public class LocationForegroundService extends Service {
                     locationCallback,
                     Looper.getMainLooper()
             );
-            Log.d(TAG, "requestLocationUpdates: registered with priority=" + currentPriority + ", interval=" + actualInterval + "ms");
         } catch (SecurityException e) {
             Log.e(TAG, "requestLocationUpdates: SecurityException", e);
         } catch (Exception e) {
