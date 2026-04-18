@@ -1,0 +1,676 @@
+package com.kenny.trace_path;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.location.Location;
+import android.location.LocationManager;
+import android.os.Binder;
+import android.os.Build;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.util.Log;
+
+import androidx.core.app.NotificationCompat;
+
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationAvailability;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
+
+import io.flutter.plugin.common.EventChannel;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Android 前台定位服务
+ */
+public class LocationForegroundService extends Service {
+
+    private static final String TAG = "LocationForegroundService";
+
+    public static final String ACTION_START = "com.kenny.trace_path.START";
+    public static final String ACTION_STOP = "com.kenny.trace_path.STOP";
+    public static final String ACTION_UPDATE_CONFIG = "com.kenny.trace_path.UPDATE_CONFIG";
+    public static final String ACTION_NOTIFY_SINK_READY = "com.kenny.trace_path.NOTIFY_SINK_READY";
+
+    private static final int DEFAULT_INTERVAL_SECONDS = 30;
+    private static final boolean DEFAULT_POWER_SAVING = false;
+
+    public static final String EVENT_CHANNEL_NAME = "com.kenny.trace_path/location_events";
+
+    private static final AtomicBoolean _isTrackingStatic = new AtomicBoolean(false);
+
+    public static boolean isServiceTracking() {
+        return _isTrackingStatic.get();
+    }
+
+    private static final String CHANNEL_ID = "location_service_channel";
+    private static final int NOTIFICATION_ID = 888;
+
+    private Location lastLocation;
+    private int intervalSeconds = DEFAULT_INTERVAL_SECONDS;
+    private boolean powerSaving = DEFAULT_POWER_SAVING;
+
+    private FusedLocationProviderClient fusedLocationClient;
+    private LocationCallback locationCallback;
+
+    private int currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY;
+    private long lastGoodAccuracyTime = 0L;
+    private long lastGpsFixTime = 0L;
+    private long lastProcessedTime = 0L;
+    private float lastProcessedAccuracy = 0f;
+
+    private static final float NETWORK_ACCURACY_THRESHOLD = 100f;
+    private static final float GPS_ACCURACY_THRESHOLD = 50f;
+    private static final int GPS_STABLE_COUNT_THRESHOLD = 3;
+    private static final long GPS_NO_FIX_TIMEOUT_MS = 120_000L;
+    private int _gpsStableCount = 0;
+
+    private static final long INTERVAL_STILL = 60_000L;
+    private static final long INTERVAL_WALK = 30_000L;
+    private static final long INTERVAL_BIKE = 15_000L;
+    private static final long INTERVAL_DRIVE = 10_000L;
+    private static final float SPEED_WALK = 1.0f;
+    private static final float SPEED_BIKE = 3.0f;
+    private static final float SPEED_DRIVE = 8.0f;
+    private long _currentIntervalMs = INTERVAL_STILL;
+
+    private static final long ALIVE_INTERVAL_MS = 60_000L;
+    private static final int ALIVE_REQUEST_CODE = 1001;
+    private final Handler _aliveHandler = new Handler(Looper.getMainLooper());
+    private final Runnable _aliveRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!_isTrackingStatic.get()) return;
+            Log.w(TAG, "[保活] 触发，主动拉取位置");
+            try {
+                fusedLocationClient.getLastLocation()
+                        .addOnSuccessListener(location -> {
+                            if (location != null && _isTrackingStatic.get()) {
+                                Log.w(TAG, "[保活] getLastLocation 成功: lat=" + location.getLatitude() + ", lng=" + location.getLongitude() + ", accuracy=" + location.getAccuracy());
+                                handleLocationResult(location);
+                            } else {
+                                Log.w(TAG, "[保活] getLastLocation 返回 null，重新注册");
+                                reRegisterLocationUpdates();
+                            }
+                        })
+                        .addOnFailureListener(e -> {
+                            Log.w(TAG, "[保活] getLastLocation 失败: " + e.getMessage() + "，重新注册");
+                            reRegisterLocationUpdates();
+                        });
+            } catch (SecurityException e) {
+                Log.e(TAG, "[保活] SecurityException", e);
+            }
+            _aliveHandler.postDelayed(this, ALIVE_INTERVAL_MS);
+        }
+    };
+
+    private float getNetworkAccuracyThreshold() {
+        return powerSaving ? 80f : NETWORK_ACCURACY_THRESHOLD;
+    }
+
+    private float getGpsAccuracyThreshold() {
+        return powerSaving ? 30f : GPS_ACCURACY_THRESHOLD;
+    }
+
+    private EventChannel.EventSink eventSink;
+
+    private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+    private final SimpleDateFormat dateFormatFile = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+    private File trackFile;
+
+    private final IBinder binder = new LocalBinder();
+
+    class LocalBinder extends Binder {
+        LocationForegroundService getService() {
+            return LocationForegroundService.this;
+        }
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        Log.d(TAG, "onCreate");
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+        createNotificationChannel();
+        initTrackFile();
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return binder;
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.d(TAG, "onStartCommand: action=" + (intent != null ? intent.getAction() : null));
+
+        if (intent == null) return START_STICKY;
+
+        String action = intent.getAction();
+        switch (action) {
+            case ACTION_START:
+                intervalSeconds = intent.getIntExtra("interval", DEFAULT_INTERVAL_SECONDS);
+                powerSaving = intent.getBooleanExtra("powerSaving", DEFAULT_POWER_SAVING);
+                Log.d(TAG, "onStartCommand START: interval=" + intervalSeconds + "s, powerSaving=" + powerSaving);
+                if (_isTrackingStatic.get() && locationCallback != null) {
+                    Log.d(TAG, "Already tracking, stopping first then restart with new config");
+                    stopTracking();
+                }
+                startTracking();
+                break;
+
+            case ACTION_STOP:
+                stopTracking();
+                break;
+
+            case ACTION_UPDATE_CONFIG:
+                intervalSeconds = intent.getIntExtra("interval", DEFAULT_INTERVAL_SECONDS);
+                powerSaving = intent.getBooleanExtra("powerSaving", DEFAULT_POWER_SAVING);
+                Log.d(TAG, "Config updated: interval=" + intervalSeconds + "s, powerSaving=" + powerSaving);
+                if (_isTrackingStatic.get() && locationCallback != null) {
+                    if (powerSaving && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
+                        switchToBalanced();
+                    }
+                    reRegisterLocationUpdates();
+                }
+                break;
+
+            case ACTION_NOTIFY_SINK_READY:
+                EventChannel.EventSink sink = eventSink != null ? eventSink : LocationPluginBinder.getEventSink();
+                Log.d(TAG, "ACTION_NOTIFY_SINK_READY: isTracking=" + _isTrackingStatic.get() + ", lastLocation=" + (lastLocation != null) + ", sink=" + (sink != null));
+                if (sink == null) {
+                    Log.w(TAG, "ACTION_NOTIFY_SINK_READY: sink is null, cannot send");
+                } else if (_isTrackingStatic.get() && locationCallback != null) {
+                    if (lastLocation != null) {
+                        sendLocationToFlutter(lastLocation);
+                    }
+                } else {
+                    Log.d(TAG, "ACTION_NOTIFY_SINK_READY: service was killed, auto-restarting tracking");
+                    startTracking();
+                }
+                break;
+        }
+
+        return START_STICKY;
+    }
+
+    private void startTracking() {
+        if (_isTrackingStatic.get() && locationCallback != null) {
+            Log.w(TAG, "Already tracking, ignore");
+            return;
+        }
+
+        _isTrackingStatic.set(false);
+        lastGoodAccuracyTime = 0L;
+        lastGpsFixTime = 0L;
+        _gpsStableCount = 0;
+        currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY;
+
+        _isTrackingStatic.set(true);
+        startForeground(NOTIFICATION_ID, buildNotification());
+
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(LocationResult result) {
+                Log.d(TAG, "[Callback] onLocationResult called, lastLocation=" + (result.getLastLocation() != null));
+                if (result.getLastLocation() != null) {
+                    handleLocationResult(result.getLastLocation());
+                }
+            }
+
+            @Override
+            public void onLocationAvailability(LocationAvailability availability) {
+                Log.d(TAG, "LocationAvailability: isLocationAvailable=" + availability.isLocationAvailable());
+                if (!availability.isLocationAvailable() && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
+                    lastGpsFixTime = System.currentTimeMillis();
+                }
+                if (availability.isLocationAvailable()) {
+                    lastGpsFixTime = 0L;
+                }
+            }
+        };
+
+        requestLocationUpdates();
+        Log.d(TAG, "startTracking: started with priority=" + currentPriority);
+
+        _aliveHandler.removeCallbacks(_aliveRunnable);
+        _aliveHandler.post(_aliveRunnable);
+    }
+
+    private void requestLocationUpdates() {
+        if (!_isTrackingStatic.get()) {
+            Log.w(TAG, "requestLocationUpdates: skipped, _isTrackingStatic=false");
+            return;
+        }
+
+        if (locationCallback == null) {
+            Log.w(TAG, "requestLocationUpdates: skipped, locationCallback=null");
+            return;
+        }
+
+        long actualInterval = _currentIntervalMs;
+
+        try {
+            LocationRequest locationRequest = LocationRequest.create()
+                    .setPriority(currentPriority)
+                    .setInterval(actualInterval)
+                    .setFastestInterval(30000);
+
+            fusedLocationClient.requestLocationUpdates(
+                    locationRequest,
+                    locationCallback,
+                    Looper.getMainLooper()
+            );
+            Log.d(TAG, "requestLocationUpdates: registered with priority=" + currentPriority + ", interval=" + actualInterval + "ms");
+        } catch (SecurityException e) {
+            Log.e(TAG, "requestLocationUpdates: SecurityException", e);
+        } catch (Exception e) {
+            Log.e(TAG, "requestLocationUpdates: Exception", e);
+        }
+    }
+
+    private void stopTracking() {
+        Log.d(TAG, "stopTracking called");
+        _isTrackingStatic.set(false);
+
+        _aliveHandler.removeCallbacks(_aliveRunnable);
+
+        if (locationCallback != null) {
+            try {
+                fusedLocationClient.removeLocationUpdates(locationCallback);
+            } catch (Exception e) {
+                Log.w(TAG, "removeLocationUpdates failed", e);
+            }
+        }
+        locationCallback = null;
+
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        stopSelf();
+    }
+
+    private void handleLocationResult(Location location) {
+        boolean isGps = location.getProvider().equals(LocationManager.GPS_PROVIDER);
+        float accuracy = location.getAccuracy();
+        long now = System.currentTimeMillis();
+
+        Log.d(TAG, "handleLocationResult: pos=" + location.getLongitude() + "," + location.getLatitude() + ", isGps=" + isGps + ", accuracy=" + accuracy);
+
+        if (accuracy <= 0f || accuracy > 500f) {
+            Log.e(TAG, "[DISCARD] accuracy无效: " + accuracy + "m, provider=" + location.getProvider() + ", lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+            return;
+        }
+
+        float speed = location.hasSpeed() ? location.getSpeed() : -1f;
+        Log.d(TAG, "[位置] lat=" + location.getLatitude() + ", lng=" + location.getLongitude() + ", speed=" + speed + "m/s, accuracy=" + accuracy + "m, provider=" + location.getProvider());
+
+        if (lastLocation != null) {
+            long timeDelta = now - lastProcessedTime;
+            float distanceDelta = lastLocation.distanceTo(location);
+
+            if (timeDelta < 2000 && distanceDelta < 3.0f) {
+                Log.e(TAG, "[DISCARD] 原地抖动: 间隔=" + timeDelta + "ms, 距离=" + distanceDelta + "m, accuracy=" + accuracy + "m");
+                return;
+            }
+        }
+
+        if (isGps) {
+            if (accuracy > 200f) {
+                Log.e(TAG, "[DISCARD] GPS精度差: accuracy=" + accuracy + "m");
+                return;
+            }
+        } else {
+            if (accuracy > 300f) {
+                Log.e(TAG, "[DISCARD] 网络定位精度差: accuracy=" + accuracy + "m");
+                return;
+            }
+        }
+
+        evaluateAndSwitchPriority(isGps, accuracy, now);
+
+        lastLocation = location;
+        lastProcessedTime = now;
+        lastProcessedAccuracy = accuracy;
+
+        Log.d(TAG, "[同步] handleLocationResult: time=" + location.getTime() + ", lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+        sendLocationToFlutter(location);
+        updateNotification(location);
+    }
+
+    private void evaluateAndSwitchPriority(boolean isGps, float accuracy, long now) {
+        String currentMode = (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) ? "GPS" : "网络";
+        Log.d(TAG, "[自适应] evaluateAndSwitchPriority: currentMode=" + currentMode + ", isGps=" + isGps + ", accuracy=" + accuracy);
+
+        float networkThreshold = getNetworkAccuracyThreshold();
+        float gpsThreshold = getGpsAccuracyThreshold();
+
+        if (currentPriority == Priority.PRIORITY_BALANCED_POWER_ACCURACY) {
+            if (accuracy > networkThreshold) {
+                Log.d(TAG, "[自适应] 网络定位精度=" + accuracy + "m > " + networkThreshold + "m，切换到 GPS");
+                switchToHighAccuracy();
+            }
+        } else {
+            if (isGps && accuracy <= gpsThreshold) {
+                _gpsStableCount++;
+                Log.d(TAG, "[自适应] GPS 精度好=" + accuracy + "m (" + _gpsStableCount + "/" + GPS_STABLE_COUNT_THRESHOLD + ")");
+                if (_gpsStableCount >= GPS_STABLE_COUNT_THRESHOLD) {
+                    Log.d(TAG, "[自适应] GPS 连续" + _gpsStableCount + "次精度好，切回网络定位省电");
+                    _gpsStableCount = 0;
+                    switchToBalanced();
+                }
+            } else if (isGps && accuracy > gpsThreshold) {
+                _gpsStableCount = 0;
+            }
+
+            if (isGps && lastGpsFixTime > 0) {
+                long gpsNoFixDuration = now - lastGpsFixTime;
+                if (gpsNoFixDuration > GPS_NO_FIX_TIMEOUT_MS) {
+                    Log.d(TAG, "[自适应] GPS 连续" + gpsNoFixDuration + "ms精度差，切回网络定位");
+                    _gpsStableCount = 0;
+                    switchToBalanced();
+                }
+            }
+        }
+    }
+
+    private void switchToHighAccuracy() {
+        if (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
+            Log.d(TAG, "[切换] switchToHighAccuracy: 已是GPS模式，跳过");
+            return;
+        }
+        Log.d(TAG, "[切换] switchToHighAccuracy: 从" + currentPriority + "切换到GPS");
+        currentPriority = Priority.PRIORITY_HIGH_ACCURACY;
+        lastGoodAccuracyTime = System.currentTimeMillis();
+        reRegisterLocationUpdates();
+    }
+
+    private void switchToBalanced() {
+        if (currentPriority == Priority.PRIORITY_BALANCED_POWER_ACCURACY) {
+            Log.d(TAG, "[切换] switchToBalanced: 已是网络模式，跳过");
+            return;
+        }
+        Log.d(TAG, "[切换] switchToBalanced: 从" + currentPriority + "切换到网络");
+        currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY;
+        reRegisterLocationUpdates();
+    }
+
+    private void reRegisterLocationUpdates() {
+        if (locationCallback != null) {
+            try {
+                fusedLocationClient.removeLocationUpdates(locationCallback);
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        requestLocationUpdates();
+    }
+
+    private Location requestSingleLocation() {
+        Log.d(TAG, "requestSingleLocation: start");
+
+        Location location = requestSingleLocationWithPriority(
+                powerSaving ? Priority.PRIORITY_BALANCED_POWER_ACCURACY : Priority.PRIORITY_HIGH_ACCURACY,
+                45
+        );
+
+        if (location != null) {
+            Log.d(TAG, "requestSingleLocation: GPS success lat=" + location.getLatitude() + ", lng=" + location.getLongitude() + ", accuracy=" + location.getAccuracy() + "m");
+            return location;
+        }
+
+        Log.w(TAG, "requestSingleLocation: GPS timeout, falling back to network positioning");
+        Location networkLocation = requestSingleLocationWithPriority(
+                Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                30
+        );
+
+        if (networkLocation != null) {
+            Log.d(TAG, "requestSingleLocation: network success lat=" + networkLocation.getLatitude() + ", lng=" + networkLocation.getLongitude() + ", accuracy=" + networkLocation.getAccuracy() + "m");
+        } else {
+            Log.w(TAG, "requestSingleLocation: all methods failed");
+        }
+
+        return networkLocation;
+    }
+
+    private Location requestSingleLocationWithPriority(int priority, long timeoutSeconds) {
+        try {
+            LocationRequest.Builder builder = new LocationRequest.Builder(priority, 0)
+                    .setMaxUpdates(1)
+                    .setWaitForAccurateLocation(false);
+
+            final Location[] resultLocation = new Location[1];
+            CountDownLatch latch = new CountDownLatch(1);
+
+            LocationCallback singleCallback = new LocationCallback() {
+                @Override
+                public void onLocationResult(LocationResult result) {
+                    resultLocation[0] = result.getLastLocation();
+                    try {
+                        fusedLocationClient.removeLocationUpdates(this);
+                    } catch (Exception e) {
+                        // ignore
+                    }
+                    latch.countDown();
+                }
+            };
+
+            fusedLocationClient.requestLocationUpdates(
+                    builder.build(),
+                    singleCallback,
+                    Looper.getMainLooper()
+            );
+
+            boolean waited = latch.await(timeoutSeconds, TimeUnit.SECONDS);
+            if (!waited) {
+                Log.w(TAG, "requestSingleLocationWithPriority(" + priority + "): timeout after " + timeoutSeconds + "s");
+                try {
+                    fusedLocationClient.removeLocationUpdates(singleCallback);
+                } catch (Exception e) {
+                    // ignore
+                }
+            }
+
+            return resultLocation[0];
+
+        } catch (SecurityException e) {
+            Log.e(TAG, "SecurityException in requestSingleLocationWithPriority", e);
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "Exception in requestSingleLocationWithPriority", e);
+            return null;
+        }
+    }
+
+    private void sendLocationToFlutter(Location location) {
+        EventChannel.EventSink sink = eventSink != null ? eventSink : LocationPluginBinder.getEventSink();
+        if (sink == null) {
+            Log.w(TAG, "sendLocationToFlutter: sink is null, event dropped! lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+            return;
+        }
+        Log.d(TAG, "sendLocationToFlutter: sink available, sending lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+
+        java.util.Map<String, Object> locationMap = new java.util.HashMap<>();
+        locationMap.put("latitude", location.getLatitude());
+        locationMap.put("longitude", location.getLongitude());
+        locationMap.put("accuracy", (double) location.getAccuracy());
+        locationMap.put("altitude", location.hasAltitude() ? location.getAltitude() : 0.0);
+        locationMap.put("speed", location.hasSpeed() ? (double) location.getSpeed() : 0.0);
+        locationMap.put("heading", 0.0);
+        locationMap.put("timestamp", (double) location.getTime());
+
+        try {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                sink.success(locationMap);
+                Log.d(TAG, "Location sent to Flutter: lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error sending location to Flutter", e);
+        }
+
+        saveLocationToFile(location);
+    }
+
+    private void initTrackFile() {
+        try {
+            File trackDir = new File(getFilesDir(), "location_tracks");
+            if (!trackDir.exists()) trackDir.mkdirs();
+            String dateStr = dateFormatFile.format(new Date());
+            trackFile = new File(trackDir, "track_" + dateStr + ".csv");
+
+            if (!trackFile.exists()) {
+                FileWriter writer = new FileWriter(trackFile, true);
+                writer.append("timestamp,latitude,longitude,accuracy,altitude,speed\n");
+                writer.flush();
+                writer.close();
+            }
+            Log.d(TAG, "Track file initialized: " + trackFile.getAbsolutePath());
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to init track file", e);
+        }
+    }
+
+    private void saveLocationToFile(Location location) {
+        try {
+            if (trackFile == null) {
+                initTrackFile();
+            }
+
+            long timestamp = (long) location.getTime();
+            double latitude = location.getLatitude();
+            double longitude = location.getLongitude();
+            double accuracy = location.getAccuracy();
+            double altitude = location.hasAltitude() ? location.getAltitude() : 0.0;
+            double speed = location.hasSpeed() ? location.getSpeed() : 0.0;
+
+            String line = timestamp + "," + latitude + "," + longitude + "," + accuracy + "," + altitude + "," + speed + "\n";
+
+            FileWriter writer = new FileWriter(trackFile, true);
+            writer.append(line);
+            writer.flush();
+            writer.close();
+            Log.d(TAG, "Location saved to file: lat=" + latitude + ", lng=" + longitude);
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to save location to file", e);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to save location to file", e);
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    "实时定位",
+                    NotificationManager.IMPORTANCE_LOW
+            );
+            channel.setDescription("TracePath 后台定位服务");
+            channel.setShowBadge(false);
+            channel.enableLights(false);
+            channel.enableVibration(false);
+
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
+        }
+    }
+
+    private Notification buildNotification() {
+        return buildNotification(null);
+    }
+
+    private Notification buildNotification(Location loc) {
+        String status = _isTrackingStatic.get() ? "运行中" : "已停止";
+        String mode = powerSaving ? "省电" : "常态";
+        boolean isGps = (loc != null ? loc.getProvider() : (lastLocation != null ? lastLocation.getProvider() : null)) == LocationManager.GPS_PROVIDER;
+        String source = currentPriority == Priority.PRIORITY_HIGH_ACCURACY ? "GPS" : "网络";
+        String locationText;
+        if (lastLocation != null) {
+            locationText = String.format(Locale.getDefault(), "位置: %.6f, %.6f", lastLocation.getLatitude(), lastLocation.getLongitude());
+        } else {
+            locationText = "位置: 获取中...";
+        }
+        String accuracyText = lastLocation != null ? String.format(Locale.getDefault(), "精度: %.0f米", lastLocation.getAccuracy()) : "";
+        String updateTime = lastLocation != null ? "更新: " + timeFormat.format(new Date(lastLocation.getTime())) : "";
+
+        String title = "TracePath [" + source + "] 正在运行";
+        String content = mode + " | " + locationText + " | " + accuracyText + " | " + updateTime;
+
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Intent stopIntent = new Intent(this, LocationForegroundService.class);
+        stopIntent.setAction(ACTION_STOP);
+        PendingIntent stopPendingIntent = PendingIntent.getService(
+                this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE
+        );
+
+        return new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle(title)
+                .setContentText(content)
+                .setSmallIcon(R.drawable.ic_notification_icon)
+                .setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(content))
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止", stopPendingIntent)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                .build();
+    }
+
+    private void updateNotification(Location loc) {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) {
+            Log.w(TAG, "updateNotification: NotificationManager is null!");
+            return;
+        }
+        Log.d(TAG, "updateNotification: loc=" + (loc != null ? loc.getLatitude() : null) + "," + (loc != null ? loc.getLongitude() : null) + ", provider=" + (loc != null ? loc.getProvider() : null));
+        manager.notify(NOTIFICATION_ID, buildNotification(loc));
+    }
+
+    @Override
+    public void onDestroy() {
+        Log.d(TAG, "onDestroy");
+        _isTrackingStatic.set(false);
+        if (locationCallback != null) {
+            try {
+                fusedLocationClient.removeLocationUpdates(locationCallback);
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        locationCallback = null;
+        super.onDestroy();
+    }
+
+    public void setEventSink(EventChannel.EventSink sink) {
+        this.eventSink = sink;
+    }
+
+    public boolean isServiceRunning() {
+        return _isTrackingStatic.get();
+    }
+}
