@@ -11,8 +11,8 @@ class UserLocationMarker extends StatelessWidget {
 
   const UserLocationMarker({
     super.key,
-    this.pinSize = 40,
-    this.avatarSize = 22,
+    this.pinSize = 36,
+    this.avatarSize = 18,
     this.showLabel = true,
   });
 
@@ -63,7 +63,7 @@ class UserLocationMarker extends StatelessWidget {
                 child: const Icon(
                   Icons.person,
                   color: Colors.white,
-                  size: 14,
+                  size: 12,
                 ),
               ),
             ),

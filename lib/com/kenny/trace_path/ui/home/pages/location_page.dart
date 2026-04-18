@@ -182,8 +182,12 @@ class _LocationPageState extends State<LocationPage>
         _myLng = saved.lng!;
         _isLoadingLocation = false;
       });
-      // 地图移到保存的位置
-      _mapController.move(LatLng(_myLat, _myLng), 14);
+      // 地图移到保存的位置（延迟到下一帧，确保地图已初始化）
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _mapController.move(LatLng(_myLat, _myLng), 14);
+        }
+      });
     }
   }
 
