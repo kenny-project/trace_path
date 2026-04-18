@@ -34,7 +34,7 @@ class GeolocatorLocationProvider implements LocationProvider {
       final hasPermission = await _checkPermission();
       if (!hasPermission) {
         print('[GeolocatorLocationProvider] 定位权限被拒绝');
-        await _errorLogger.logPermission(permission: 'LOCATION', reason: 'PERMISSION_DENIED');
+        await _errorLogger.logPermission(permission: 'FBLS', reason: 'PERMISSION_DENIED');
         return null;
       }
 

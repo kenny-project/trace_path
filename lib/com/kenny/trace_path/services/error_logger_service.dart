@@ -9,7 +9,7 @@ enum ErrorTag {
   gpsSuccess('[GPS_OK]'),
   networkFail('[NETWORK_FAIL]'),
   permission('[PERMISSION]'),
-  service('[SERVICE]'),
+  service('[FBLS]'),
   crash('[CRASH]'),
   other('[OTHER]'),
   app('[APP]'),

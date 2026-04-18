@@ -48,7 +48,7 @@ class NativeLocationProvider implements LocationProvider {
       final hasPermission = await checkPermission();
       if (!hasPermission) {
         print('[NativeLocationProvider] 定位权限被拒绝');
-        await _errorLogger.logPermission(permission: 'LOCATION', reason: 'PERMISSION_DENIED');
+        await _errorLogger.logPermission(permission: 'FBLS', reason: 'PERMISSION_DENIED');
         return null;
       }
 
