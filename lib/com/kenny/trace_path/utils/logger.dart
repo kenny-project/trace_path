@@ -16,14 +16,14 @@ class LogTag {
 
   const LogTag(this.name, this.emoji);
 
-  static const debug = LogTag('DEBUG', '🔍');
-  static const location = LogTag('LOCATION', '📍');
-  static const track = LogTag('TRACK', '🛤️');
-  static const service = LogTag('SERVICE', '⚙️');
-  static const ui = LogTag('UI', '🖼️');
-  static const storage = LogTag('STORAGE', '💾');
-  static const network = LogTag('NET', '🌐');
-  static const error = LogTag('ERROR', '❌');
+  static const DEBUG = LogTag('DEBUG', '🔍');
+  static const FBLS = LogTag('FBLS', '📍');
+  static const TRACK = LogTag('TRACK', '🛤️');
+  static const SRVC = LogTag('SRVC', '⚙️');
+  static const UI = LogTag('UI', '🖼️');
+  static const STORAGE = LogTag('STORAGE', '💾');
+  static const NETWORK = LogTag('NET', '🌐');
+  static const ERROR = LogTag('ERROR', '❌');
 }
 
 /// 统一日志门面
@@ -32,8 +32,8 @@ class LogTag {
 /// ```dart
 /// import '../utils/logger.dart';
 ///
-/// Log.d(LogTag.location, '服务启动');
-/// Log.e(LogTag.error, '定位失败: $e');
+/// Log.d(LogTag.FBLS, '服务启动');
+/// Log.e(LogTag.ERROR, '定位失败: $e');
 /// ```
 class Log {
   Log._();

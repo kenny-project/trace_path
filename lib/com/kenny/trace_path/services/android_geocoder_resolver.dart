@@ -23,10 +23,10 @@ class AndroidGeocoderResolver extends AddressResolverBase {
       });
       return result;
     } on PlatformException catch (e) {
-      Log.e(LogTag.network, 'AndroidGeocoderResolver.getAddressFromLatLng error: ${e.message}', e);
+      Log.e(LogTag.NETWORK, 'AndroidGeocoderResolver.getAddressFromLatLng error: ${e.message}', e);
       return null;
     } catch (e, s) {
-      Log.e(LogTag.network, 'AndroidGeocoderResolver.getAddressFromLatLng error', e, s);
+      Log.e(LogTag.NETWORK, 'AndroidGeocoderResolver.getAddressFromLatLng error', e, s);
       return null;
     }
   }

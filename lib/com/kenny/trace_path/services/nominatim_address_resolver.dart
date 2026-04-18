@@ -49,7 +49,7 @@ class NominatimAddressResolver extends AddressResolverBase {
       }
       return null;
     } catch (e, s) {
-      Log.e(LogTag.network, 'NominatimAddressResolver.getAddressFromLatLng error', e, s);
+      Log.e(LogTag.NETWORK, 'NominatimAddressResolver.getAddressFromLatLng error', e, s);
       return null;
     }
   }

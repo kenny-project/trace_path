@@ -17,7 +17,7 @@ class AddressResolver {
   /// 设置解析器类型
   static void setResolverType(AddressResolverType type) {
     _resolverType = type;
-    Log.i(LogTag.network, 'AddressResolver: switched to $type');
+    Log.i(LogTag.NETWORK, 'AddressResolver: switched to $type');
   }
 
   /// 获取当前解析器类型
@@ -27,7 +27,7 @@ class AddressResolver {
   static void setAmapApiKey(String apiKey) {
     _amapApiKey = apiKey;
     AMapAddressResolver.apiKey = apiKey;
-    Log.i(LogTag.network, 'AddressResolver: AMap API key set');
+    Log.i(LogTag.NETWORK, 'AddressResolver: AMap API key set');
   }
 
   /// 获取高德地图 API Key

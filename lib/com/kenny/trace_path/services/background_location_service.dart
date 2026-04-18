@@ -66,18 +66,18 @@ class BackgroundLocationService {
   // ========== 初始化 ==========
   Future<void> init() async {
     if (_isInitialized) {
-      Log.w(LogTag.service, 'init() 已调用，忽略重复调用');
+      Log.w(LogTag.FBLS, 'init() 已调用，忽略重复调用');
       return;
     }
     _isInitialized = true;
 
-    Log.i(LogTag.service, '★★★ init() START ★★★');
+    Log.i(LogTag.FBLS, '★★★ init() START ★★★');
     await _settingsService.load();
     _applyAddressResolverFromSettings();
     await _errorLogger.init();
     await _errorLogger.logService(action: 'INIT');
     _initLocationProvider();
-    Log.i(LogTag.service, 'init: _initLocationProvider done');
+    Log.i(LogTag.FBLS, 'init: _initLocationProvider done');
 
     // 启动时检查并申请权限（如果未授权则引导用户授权）
     await _ensurePermissions();
@@ -88,59 +88,58 @@ class BackgroundLocationService {
     };
 
     // 尝试从 Kotlin 侧恢复断线期间的轨迹数据
-    Log.i(LogTag.service, 'init: calling _recoverKotlinTrackData...');
+    Log.i(LogTag.FBLS, 'init: calling _recoverKotlinTrackData...');
     await _kotlinRecovery.recover();
-    Log.i(LogTag.service, 'init: _recoverKotlinTrackData done');
+    Log.i(LogTag.FBLS, 'init: _recoverKotlinTrackData done');
 
     // 主动请求一次当前位置（Flutter 重连后，立即在地图上显示当前位置）
-    Log.i(LogTag.service, 'init: calling _requestAndBroadcastCurrentLocation...');
+    Log.i(LogTag.FBLS, 'init: calling _requestAndBroadcastCurrentLocation...');
     await _requestAndBroadcastCurrentLocation();
-    Log.i(LogTag.service, 'init: _requestAndBroadcastCurrentLocation done');
+    Log.i(LogTag.FBLS, 'init: _requestAndBroadcastCurrentLocation done');
 
     // 注册 EventChannel 监听（Flutter 启动时就注册，不管服务有没有启动）
     // 注意：不要在 start() 中再次调用，避免重复取消 subscription
-    Log.i(LogTag.service, 'init: calling _listenToLocationEvents...');
+    Log.i(LogTag.FBLS, 'init: calling _listenToLocationEvents...');
     _eventHandler.startListening();
-    Log.i(LogTag.service, 'init: _listenToLocationEvents done');
+    Log.i(LogTag.FBLS, 'init: _listenToLocationEvents done');
 
     // 启动服务（打开应用时默认开启）- 等待完成确保原生服务启动
-    Log.i(LogTag.service, 'init: calling start()...');
+    Log.i(LogTag.FBLS, 'init: calling start()...');
     await start();
-    Log.i(LogTag.service, '★★★ init() END ★★★');
+    Log.i(LogTag.FBLS, '★★★ init() END ★★★');
   }
 
   /// 主动请求当前位置并广播到地图（Flutter 重连后恢复实时显示）
   Future<void> _requestAndBroadcastCurrentLocation() async {
     try {
-      Log.d(LogTag.location, '★★★ _requestAndBroadcastCurrentLocation called ★★★');
-      Log.d(LogTag.location, '_locationProvider=${_locationProvider.runtimeType}');
+      Log.d(LogTag.FBLS, '_requestAndBroadcastCurrentLocation called');
+      Log.d(LogTag.FBLS, '_locationProvider=${_locationProvider.runtimeType}');
       final position = await _locationProvider?.getCurrentPosition();
       if (position != null) {
         _broadcast(LocationEvent.position(position));
         _saveToLocal(position);
-        Log.i(LogTag.location, '主动请求位置成功: lat=${position.latitude}, lng=${position.longitude}');
+        Log.i(LogTag.FBLS, '主动请求位置成功: lat=${position.latitude}, lng=${position.longitude}');
       } else {
-        Log.w(LogTag.location, '主动请求位置返回 null');
+        Log.w(LogTag.FBLS, '主动请求位置返回 null');
       }
     } catch (e, s) {
-      Log.e(LogTag.location, '主动请求位置失败', e, s);
+      Log.e(LogTag.FBLS, '主动请求位置失败', e, s);
     }
   }
 
   void _applyAddressResolverFromSettings() {
     final resolverType = _settingsService.settings.addressResolverType;
     AddressResolver.setResolverType(resolverType);
-    Log.i(LogTag.network, '地址解析器已应用: $resolverType (${AddressResolver().name})');
+    Log.i(LogTag.NETWORK, '地址解析器已应用: $resolverType (${AddressResolver().name})');
 
     // 设置只落盘定位相关日志
     ErrorLoggerService.setPersistEnabledTags({
       // Flutter 标签
-      'LOCATION',
-      'TRACK',
-      'SERVICE',
+      // 'FBLS',
+      // 'TRACK',
       // Android 标签
-      'LocationForegroundService',
-      'LocationPlugin',
+      'ALFS',
+      // 'LocationPlugin',
     });
   }
 
@@ -148,10 +147,10 @@ class BackgroundLocationService {
     _locationProvider?.dispose();
     if (_useNativeLocation) {
       _locationProvider = NativeLocationProvider();
-      Log.i(LogTag.location, '定位提供者: NativeLocationProvider');
+      Log.i(LogTag.FBLS, '定位提供者: NativeLocationProvider');
     } else {
       _locationProvider = GeolocatorLocationProvider();
-      Log.i(LogTag.location, '定位提供者: GeolocatorLocationProvider');
+      Log.i(LogTag.FBLS, '定位提供者: GeolocatorLocationProvider');
     }
   }
 
@@ -159,7 +158,7 @@ class BackgroundLocationService {
     if (_useNativeLocation == useNative) return;
     _useNativeLocation = useNative;
     _initLocationProvider();
-    Log.i(LogTag.location, '切换定位方式: _useNativeLocation=$_useNativeLocation');
+    Log.i(LogTag.FBLS, '切换定位方式: _useNativeLocation=$_useNativeLocation');
   }
 
   /// 订阅定位更新
@@ -179,7 +178,7 @@ class BackgroundLocationService {
       try {
         callback(event);
       } catch (e, s) {
-        Log.e(LogTag.service, '广播异常', e, s);
+        Log.e(LogTag.FBLS, '广播异常', e, s);
       }
     }
   }
@@ -190,8 +189,8 @@ class BackgroundLocationService {
     // 检查定位权限（内部会自动请求）
     final hasLocation = await _locationProvider?.checkPermission() ?? false;
     if (!hasLocation) {
-      Log.w(LogTag.location, '_ensurePermissions: 定位权限被拒绝');
-      await _errorLogger.logPermission(permission: 'LOCATION', reason: 'PERMISSION_DENIED_AT_INIT');
+      Log.w(LogTag.FBLS, '_ensurePermissions: 定位权限被拒绝');
+      await _errorLogger.logPermission(permission: 'FBLS', reason: 'PERMISSION_DENIED_AT_INIT');
     }
 
     // 检查通知权限（Android 13+）
@@ -200,7 +199,7 @@ class BackgroundLocationService {
       if (notifStatus.isDenied) {
         final result = await Permission.notification.request();
         if (!result.isGranted) {
-          Log.w(LogTag.location, '_ensurePermissions: 通知权限被拒绝');
+          Log.w(LogTag.FBLS, '_ensurePermissions: 通知权限被拒绝');
           await _errorLogger.logPermission(permission: 'NOTIFICATION', reason: 'PERMISSION_DENIED_AT_INIT');
         }
       }
@@ -214,8 +213,8 @@ class BackgroundLocationService {
       // 检查定位权限（内部会自动请求）
       final hasPermission = await _locationProvider?.checkPermission() ?? false;
       if (!hasPermission) {
-        Log.w(LogTag.location, 'start: 定位权限被拒绝');
-        await _errorLogger.logPermission(permission: 'LOCATION', reason: 'PERMISSION_DENIED');
+        Log.w(LogTag.FBLS, 'start: 定位权限被拒绝');
+        await _errorLogger.logPermission(permission: 'FBLS', reason: 'PERMISSION_DENIED');
         _broadcast(LocationEvent.error('定位权限被拒绝'));
         return false;
       }
@@ -226,7 +225,7 @@ class BackgroundLocationService {
         if (notifStatus.isDenied) {
           final result = await Permission.notification.request();
           if (!result.isGranted) {
-            Log.w(LogTag.location, '通知权限被拒绝');
+            Log.w(LogTag.FBLS, '通知权限被拒绝');
             await _errorLogger.logPermission(
                 permission: 'NOTIFICATION', reason: 'PERMISSION_DENIED');
           }
@@ -254,11 +253,11 @@ class BackgroundLocationService {
 
       _broadcast(LocationEvent.serviceStart());
 
-      Log.i(LogTag.service, '服务启动成功');
+      Log.i(LogTag.FBLS, '服务启动成功');
       await _errorLogger.logService(action: 'START_SUCCESS');
       return true;
     } catch (e, s) {
-      Log.e(LogTag.service, 'start 异常', e, s);
+      Log.e(LogTag.FBLS, 'start 异常', e, s);
       _broadcast(LocationEvent.error(e.toString()));
       return false;
     }
@@ -277,10 +276,10 @@ class BackgroundLocationService {
       _isServiceRunning = false;
       _broadcast(LocationEvent.serviceStop());
 
-      Log.i(LogTag.service, '服务已停止');
+      Log.i(LogTag.FBLS, '服务已停止');
       await _errorLogger.logService(action: 'STOP_SUCCESS');
     } catch (e, s) {
-      Log.e(LogTag.service, 'stop 异常', e, s);
+      Log.e(LogTag.FBLS, 'stop 异常', e, s);
       await _errorLogger.logService(action: 'STOP_FAILED', extra: 'error=$e');
     }
   }
@@ -305,7 +304,7 @@ class BackgroundLocationService {
         'powerSaving': _powerSaving,
       });
     } catch (e, s) {
-      Log.e(LogTag.service, 'updateConfig 异常', e, s);
+      Log.e(LogTag.FBLS, 'updateConfig 异常', e, s);
     }
   }
 
@@ -313,10 +312,10 @@ class BackgroundLocationService {
   Future<bool> checkRunning() async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('isLocationServiceRunning');
-      Log.d(LogTag.service, 'checkRunning: result=$result');
+      Log.d(LogTag.FBLS, 'checkRunning: result=$result');
       return result ?? false;
     } catch (e, s) {
-      Log.e(LogTag.service, 'checkRunning 异常', e, s);
+      Log.e(LogTag.FBLS, 'checkRunning 异常', e, s);
       return false;
     }
   }
@@ -326,14 +325,14 @@ class BackgroundLocationService {
     try {
       await TrackRecorder().record(position);
     } catch (e, s) {
-      Log.e(LogTag.track, '保存位置失败', e, s);
+      Log.e(LogTag.TRACK, '保存位置失败', e, s);
     }
   }
 
   // ========== 单次定位（委托给 LocationProvider - 用于非持续定位场景）==========
   Future<Position?> getCurrentPosition() async {
-    Log.d(LogTag.location, '========== 单次定位请求 ==========');
-    Log.d(LogTag.location, '定位参数: provider=${_useNativeLocation ? "Native" : "Geolocator"}');
+    Log.d(LogTag.FBLS, '========== 单次定位请求 ==========');
+    Log.d(LogTag.FBLS, '定位参数: provider=${_useNativeLocation ? "Native" : "Geolocator"}');
     return _locationProvider?.getCurrentPosition();
   }
 

@@ -22,7 +22,7 @@ class KotlinTrackRecovery {
       final result = await _methodChannel.invokeMethod<String>('getFilesDir');
       return result;
     } catch (e) {
-      Log.e(LogTag.service, 'getFilesDir 失败', e);
+      Log.e(LogTag.FBLS, 'getFilesDir 失败', e);
       return null;
     }
   }
@@ -37,7 +37,7 @@ class KotlinTrackRecovery {
 
       final trackDir = Directory('$filesDir/location_tracks');
       if (!await trackDir.exists()) {
-        Log.d(LogTag.track, 'Kotlin 轨迹目录不存在，跳过恢复');
+        Log.d(LogTag.TRACK, 'Kotlin 轨迹目录不存在，跳过恢复');
         return;
       }
 
@@ -50,7 +50,7 @@ class KotlinTrackRecovery {
       final kotlinFile = File('${trackDir.path}/track_$dateStr.csv');
 
       if (!await kotlinFile.exists()) {
-        Log.d(LogTag.track, 'Kotlin 今日轨迹文件不存在: track_$dateStr.csv');
+        Log.d(LogTag.TRACK, 'Kotlin 今日轨迹文件不存在: track_$dateStr.csv');
         return;
       }
 
@@ -65,11 +65,11 @@ class KotlinTrackRecovery {
             await TrackRecorder().readDay(phone, today.year, today.month, today.day);
         if (existingPoints.isNotEmpty) {
           lastRecordedTimestamp = existingPoints.last.timestamp.millisecondsSinceEpoch;
-          Log.d(LogTag.track,
+          Log.d(LogTag.TRACK,
               '当前存储最后点时间: ${DateTime.fromMillisecondsSinceEpoch(lastRecordedTimestamp)}');
         }
       } catch (e) {
-        Log.w(LogTag.track, '读取已有轨迹失败: $e');
+        Log.w(LogTag.TRACK, '读取已有轨迹失败: $e');
       }
 
       int recoveredCount = 0;
@@ -111,13 +111,13 @@ class KotlinTrackRecovery {
           recoveredCount++;
         } catch (e) {
           // 解析失败跳过
-          Log.e(LogTag.track, '★ 解析 Kotlin 轨迹点失败[$i]', e);
+          Log.e(LogTag.TRACK, '★ 解析 Kotlin 轨迹点失败[$i]', e);
           break;
         }
       }
 
       if (recoveredCount > 0) {
-        Log.i(LogTag.track, '从 Kotlin 侧恢复了 $recoveredCount 个轨迹点');
+        Log.i(LogTag.TRACK, '从 Kotlin 侧恢复了 $recoveredCount 个轨迹点');
         await ErrorLoggerService().logService(
             action: 'KOTLIN_TRACK_RECOVERED', extra: 'count=$recoveredCount');
       }
@@ -125,7 +125,7 @@ class KotlinTrackRecovery {
       // 恢复成功后删除 CSV，避免重复恢复
       await _deleteKotlinCsv(kotlinFile, dateStr);
     } catch (e) {
-      Log.e(LogTag.track, '恢复 Kotlin 轨迹数据失败', e);
+      Log.e(LogTag.TRACK, '恢复 Kotlin 轨迹数据失败', e);
     }
   }
 
@@ -133,9 +133,9 @@ class KotlinTrackRecovery {
   Future<void> _deleteKotlinCsv(File kotlinFile, String dateStr) async {
     try {
       await kotlinFile.delete();
-      Log.d(LogTag.track, 'Kotlin CSV 已删除: track_$dateStr.csv');
+      Log.d(LogTag.TRACK, 'Kotlin CSV 已删除: track_$dateStr.csv');
     } catch (e) {
-      Log.w(LogTag.track, 'Kotlin CSV 删除失败: $e');
+      Log.w(LogTag.TRACK, 'Kotlin CSV 删除失败: $e');
     }
   }
 }

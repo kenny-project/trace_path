@@ -21,7 +21,7 @@ class AMapAddressResolver extends AddressResolverBase {
   @override
   Future<String?> getAddressFromLatLng(double lat, double lng) async {
     if (apiKey.isEmpty) {
-      Log.e(LogTag.network, 'AMapAddressResolver: API key is not set');
+      Log.e(LogTag.NETWORK, 'AMapAddressResolver: API key is not set');
       return null;
     }
 
@@ -66,12 +66,12 @@ class AMapAddressResolver extends AddressResolverBase {
 
           return result.isEmpty ? null : result;
         } else {
-          Log.e(LogTag.network, 'AMapAddressResolver: API error - ${data['info']}');
+          Log.e(LogTag.NETWORK, 'AMapAddressResolver: API error - ${data['info']}');
         }
       }
       return null;
     } catch (e, s) {
-      Log.e(LogTag.network, 'AMapAddressResolver.getAddressFromLatLng error', e, s);
+      Log.e(LogTag.NETWORK, 'AMapAddressResolver.getAddressFromLatLng error', e, s);
       return null;
     }
   }
