@@ -14,7 +14,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
@@ -99,24 +98,24 @@ public class LocationForegroundService extends Service {
         @Override
         public void run() {
             if (!_isTrackingStatic.get()) return;
-            Log.w(TAG, "[保活] 触发，主动拉取位置");
+            TraceLog.w(TAG, "[保活] 触发，主动拉取位置");
             try {
                 fusedLocationClient.getLastLocation()
                         .addOnSuccessListener(location -> {
                             if (location != null && _isTrackingStatic.get()) {
-                                Log.w(TAG, "[保活] getLastLocation 成功: lat=" + location.getLatitude() + ", lng=" + location.getLongitude() + ", accuracy=" + location.getAccuracy());
+                                TraceLog.w(TAG, "[保活] getLastLocation 成功: lat=" + location.getLatitude() + ", lng=" + location.getLongitude() + ", accuracy=" + location.getAccuracy());
                                 handleLocationResult(location);
                             } else {
-                                Log.w(TAG, "[保活] getLastLocation 返回 null，重新注册");
+                                TraceLog.w(TAG, "[保活] getLastLocation 返回 null，重新注册");
                                 reRegisterLocationUpdates();
                             }
                         })
                         .addOnFailureListener(e -> {
-                            Log.w(TAG, "[保活] getLastLocation 失败: " + e.getMessage() + "，重新注册");
+                            TraceLog.w(TAG, "[保活] getLastLocation 失败: " + e.getMessage() + "，重新注册");
                             reRegisterLocationUpdates();
                         });
             } catch (SecurityException e) {
-                Log.e(TAG, "[保活] SecurityException", e);
+                TraceLog.e(TAG, "[保活] SecurityException", e);
             }
             _aliveHandler.postDelayed(this, ALIVE_INTERVAL_MS);
         }
@@ -147,7 +146,7 @@ public class LocationForegroundService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.d(TAG, "onCreate");
+        TraceLog.d(TAG, "onCreate");
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         createNotificationChannel();
         initTrackFile();
@@ -160,7 +159,7 @@ public class LocationForegroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d(TAG, "onStartCommand: action=" + (intent != null ? intent.getAction() : null));
+        TraceLog.d(TAG, "onStartCommand: action=" + (intent != null ? intent.getAction() : null));
 
         if (intent == null) return START_STICKY;
 
@@ -169,9 +168,9 @@ public class LocationForegroundService extends Service {
             case ACTION_START:
                 intervalSeconds = intent.getIntExtra("interval", DEFAULT_INTERVAL_SECONDS);
                 powerSaving = intent.getBooleanExtra("powerSaving", DEFAULT_POWER_SAVING);
-                Log.d(TAG, "onStartCommand START: interval=" + intervalSeconds + "s, powerSaving=" + powerSaving);
+                TraceLog.d(TAG, "onStartCommand START: interval=" + intervalSeconds + "s, powerSaving=" + powerSaving);
                 if (_isTrackingStatic.get() && locationCallback != null) {
-                    Log.d(TAG, "Already tracking, stopping first then restart with new config");
+                    TraceLog.d(TAG, "Already tracking, stopping first then restart with new config");
                     stopTracking();
                 }
                 startTracking();
@@ -184,7 +183,7 @@ public class LocationForegroundService extends Service {
             case ACTION_UPDATE_CONFIG:
                 intervalSeconds = intent.getIntExtra("interval", DEFAULT_INTERVAL_SECONDS);
                 powerSaving = intent.getBooleanExtra("powerSaving", DEFAULT_POWER_SAVING);
-                Log.d(TAG, "Config updated: interval=" + intervalSeconds + "s, powerSaving=" + powerSaving);
+                TraceLog.d(TAG, "Config updated: interval=" + intervalSeconds + "s, powerSaving=" + powerSaving);
                 if (_isTrackingStatic.get() && locationCallback != null) {
                     if (powerSaving && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
                         switchToBalanced();
@@ -195,15 +194,15 @@ public class LocationForegroundService extends Service {
 
             case ACTION_NOTIFY_SINK_READY:
                 EventChannel.EventSink sink = eventSink != null ? eventSink : LocationPluginBinder.getEventSink();
-                Log.d(TAG, "ACTION_NOTIFY_SINK_READY: isTracking=" + _isTrackingStatic.get() + ", lastLocation=" + (lastLocation != null) + ", sink=" + (sink != null));
+                TraceLog.d(TAG, "ACTION_NOTIFY_SINK_READY: isTracking=" + _isTrackingStatic.get() + ", lastLocation=" + (lastLocation != null) + ", sink=" + (sink != null));
                 if (sink == null) {
-                    Log.w(TAG, "ACTION_NOTIFY_SINK_READY: sink is null, cannot send");
+                    TraceLog.w(TAG, "ACTION_NOTIFY_SINK_READY: sink is null, cannot send");
                 } else if (_isTrackingStatic.get() && locationCallback != null) {
                     if (lastLocation != null) {
                         sendLocationToFlutter(lastLocation);
                     }
                 } else {
-                    Log.d(TAG, "ACTION_NOTIFY_SINK_READY: service was killed, auto-restarting tracking");
+                    TraceLog.d(TAG, "ACTION_NOTIFY_SINK_READY: service was killed, auto-restarting tracking");
                     startTracking();
                 }
                 break;
@@ -214,7 +213,7 @@ public class LocationForegroundService extends Service {
 
     private void startTracking() {
         if (_isTrackingStatic.get() && locationCallback != null) {
-            Log.w(TAG, "Already tracking, ignore");
+            TraceLog.w(TAG, "Already tracking, ignore");
             return;
         }
 
@@ -230,7 +229,7 @@ public class LocationForegroundService extends Service {
         locationCallback = new LocationCallback() {
             @Override
             public void onLocationResult(LocationResult result) {
-                Log.d(TAG, "[Callback] onLocationResult called, lastLocation=" + (result.getLastLocation() != null));
+                TraceLog.d(TAG, "[Callback] onLocationResult called, lastLocation=" + (result.getLastLocation() != null));
                 if (result.getLastLocation() != null) {
                     handleLocationResult(result.getLastLocation());
                 }
@@ -238,7 +237,7 @@ public class LocationForegroundService extends Service {
 
             @Override
             public void onLocationAvailability(LocationAvailability availability) {
-                Log.d(TAG, "LocationAvailability: isLocationAvailable=" + availability.isLocationAvailable());
+                TraceLog.d(TAG, "LocationAvailability: isLocationAvailable=" + availability.isLocationAvailable());
                 if (!availability.isLocationAvailable() && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
                     lastGpsFixTime = System.currentTimeMillis();
                 }
@@ -249,7 +248,7 @@ public class LocationForegroundService extends Service {
         };
 
         requestLocationUpdates();
-        Log.d(TAG, "startTracking: started with priority=" + currentPriority);
+        TraceLog.d(TAG, "startTracking: started with priority=" + currentPriority);
 
         _aliveHandler.removeCallbacks(_aliveRunnable);
         _aliveHandler.post(_aliveRunnable);
@@ -257,19 +256,19 @@ public class LocationForegroundService extends Service {
 
     private void requestLocationUpdates() {
         if (!_isTrackingStatic.get()) {
-            Log.w(TAG, "requestLocationUpdates: skipped, _isTrackingStatic=false");
+            TraceLog.w(TAG, "requestLocationUpdates: skipped, _isTrackingStatic=false");
             return;
         }
 
         if (locationCallback == null) {
-            Log.w(TAG, "requestLocationUpdates: skipped, locationCallback=null");
+            TraceLog.w(TAG, "requestLocationUpdates: skipped, locationCallback=null");
             return;
         }
 
         long actualInterval = _currentIntervalMs;
 
         try {
-            Log.d(TAG, "requestLocationUpdates: registered with priority=" + currentPriority + ", interval=" + actualInterval + "ms");
+            TraceLog.d(TAG, "requestLocationUpdates: registered with priority=" + currentPriority + ", interval=" + actualInterval + "ms");
             LocationRequest locationRequest = LocationRequest.create()
                     .setPriority(currentPriority)
                     .setInterval(actualInterval)
@@ -281,14 +280,14 @@ public class LocationForegroundService extends Service {
                     Looper.getMainLooper()
             );
         } catch (SecurityException e) {
-            Log.e(TAG, "requestLocationUpdates: SecurityException", e);
+            TraceLog.e(TAG, "requestLocationUpdates: SecurityException", e);
         } catch (Exception e) {
-            Log.e(TAG, "requestLocationUpdates: Exception", e);
+            TraceLog.e(TAG, "requestLocationUpdates: Exception", e);
         }
     }
 
     private void stopTracking() {
-        Log.d(TAG, "stopTracking called");
+        TraceLog.d(TAG, "stopTracking called");
         _isTrackingStatic.set(false);
 
         _aliveHandler.removeCallbacks(_aliveRunnable);
@@ -297,7 +296,7 @@ public class LocationForegroundService extends Service {
             try {
                 fusedLocationClient.removeLocationUpdates(locationCallback);
             } catch (Exception e) {
-                Log.w(TAG, "removeLocationUpdates failed", e);
+                TraceLog.w(TAG, "removeLocationUpdates failed", e);
             }
         }
         locationCallback = null;
@@ -311,34 +310,34 @@ public class LocationForegroundService extends Service {
         float accuracy = location.getAccuracy();
         long now = System.currentTimeMillis();
 
-        Log.d(TAG, "handleLocationResult: pos=" + location.getLongitude() + "," + location.getLatitude() + ", isGps=" + isGps + ", accuracy=" + accuracy);
+        TraceLog.d(TAG, "handleLocationResult: pos=" + location.getLongitude() + "," + location.getLatitude() + ", isGps=" + isGps + ", accuracy=" + accuracy);
 
         if (accuracy <= 0f || accuracy > 500f) {
-            Log.e(TAG, "[DISCARD] accuracy无效: " + accuracy + "m, provider=" + location.getProvider() + ", lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+            TraceLog.e(TAG, "[DISCARD] accuracy无效: " + accuracy + "m, provider=" + location.getProvider() + ", lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
             return;
         }
 
         float speed = location.hasSpeed() ? location.getSpeed() : -1f;
-        Log.d(TAG, "[位置] lat=" + location.getLatitude() + ", lng=" + location.getLongitude() + ", speed=" + speed + "m/s, accuracy=" + accuracy + "m, provider=" + location.getProvider());
+        TraceLog.d(TAG, "[位置] lat=" + location.getLatitude() + ", lng=" + location.getLongitude() + ", speed=" + speed + "m/s, accuracy=" + accuracy + "m, provider=" + location.getProvider());
 
         if (lastLocation != null) {
             long timeDelta = now - lastProcessedTime;
             float distanceDelta = lastLocation.distanceTo(location);
 
-            if (timeDelta < 2000 && distanceDelta < 3.0f) {
-                Log.e(TAG, "[DISCARD] 原地抖动: 间隔=" + timeDelta + "ms, 距离=" + distanceDelta + "m, accuracy=" + accuracy + "m");
+            if (timeDelta < 2000 && distanceDelta < 10.0f) {
+                TraceLog.e(TAG, "[DISCARD] 原地抖动: 间隔=" + timeDelta + "ms, 距离=" + distanceDelta + "m, accuracy=" + accuracy + "m");
                 return;
             }
         }
 
         if (isGps) {
             if (accuracy > 200f) {
-                Log.e(TAG, "[DISCARD] GPS精度差: accuracy=" + accuracy + "m");
+                TraceLog.e(TAG, "[DISCARD] GPS精度差: accuracy=" + accuracy + "m");
                 return;
             }
         } else {
             if (accuracy > 300f) {
-                Log.e(TAG, "[DISCARD] 网络定位精度差: accuracy=" + accuracy + "m");
+                TraceLog.e(TAG, "[DISCARD] 网络定位精度差: accuracy=" + accuracy + "m");
                 return;
             }
         }
@@ -349,29 +348,29 @@ public class LocationForegroundService extends Service {
         lastProcessedTime = now;
         lastProcessedAccuracy = accuracy;
 
-        Log.d(TAG, "[同步] handleLocationResult: time=" + location.getTime() + ", lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+        TraceLog.d(TAG, "[同步] handleLocationResult: time=" + location.getTime() + ", lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
         sendLocationToFlutter(location);
         updateNotification(location);
     }
 
     private void evaluateAndSwitchPriority(boolean isGps, float accuracy, long now) {
         String currentMode = (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) ? "GPS" : "网络";
-        Log.d(TAG, "[自适应] evaluateAndSwitchPriority: currentMode=" + currentMode + ", isGps=" + isGps + ", accuracy=" + accuracy);
+        TraceLog.d(TAG, "[自适应] evaluateAndSwitchPriority: currentMode=" + currentMode + ", isGps=" + isGps + ", accuracy=" + accuracy);
 
         float networkThreshold = getNetworkAccuracyThreshold();
         float gpsThreshold = getGpsAccuracyThreshold();
 
         if (currentPriority == Priority.PRIORITY_BALANCED_POWER_ACCURACY) {
             if (accuracy > networkThreshold) {
-                Log.d(TAG, "[自适应] 网络定位精度=" + accuracy + "m > " + networkThreshold + "m，切换到 GPS");
+                TraceLog.d(TAG, "[自适应] 网络定位精度=" + accuracy + "m > " + networkThreshold + "m，切换到 GPS");
                 switchToHighAccuracy();
             }
         } else {
             if (isGps && accuracy <= gpsThreshold) {
                 _gpsStableCount++;
-                Log.d(TAG, "[自适应] GPS 精度好=" + accuracy + "m (" + _gpsStableCount + "/" + GPS_STABLE_COUNT_THRESHOLD + ")");
+                TraceLog.d(TAG, "[自适应] GPS 精度好=" + accuracy + "m (" + _gpsStableCount + "/" + GPS_STABLE_COUNT_THRESHOLD + ")");
                 if (_gpsStableCount >= GPS_STABLE_COUNT_THRESHOLD) {
-                    Log.d(TAG, "[自适应] GPS 连续" + _gpsStableCount + "次精度好，切回网络定位省电");
+                    TraceLog.d(TAG, "[自适应] GPS 连续" + _gpsStableCount + "次精度好，切回网络定位省电");
                     _gpsStableCount = 0;
                     switchToBalanced();
                 }
@@ -382,7 +381,7 @@ public class LocationForegroundService extends Service {
             if (isGps && lastGpsFixTime > 0) {
                 long gpsNoFixDuration = now - lastGpsFixTime;
                 if (gpsNoFixDuration > GPS_NO_FIX_TIMEOUT_MS) {
-                    Log.d(TAG, "[自适应] GPS 连续" + gpsNoFixDuration + "ms精度差，切回网络定位");
+                    TraceLog.d(TAG, "[自适应] GPS 连续" + gpsNoFixDuration + "ms精度差，切回网络定位");
                     _gpsStableCount = 0;
                     switchToBalanced();
                 }
@@ -392,10 +391,10 @@ public class LocationForegroundService extends Service {
 
     private void switchToHighAccuracy() {
         if (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
-            Log.d(TAG, "[切换] switchToHighAccuracy: 已是GPS模式，跳过");
+            TraceLog.d(TAG, "[切换] switchToHighAccuracy: 已是GPS模式，跳过");
             return;
         }
-        Log.d(TAG, "[切换] switchToHighAccuracy: 从" + currentPriority + "切换到GPS");
+        TraceLog.d(TAG, "[切换] switchToHighAccuracy: 从" + currentPriority + "切换到GPS");
         currentPriority = Priority.PRIORITY_HIGH_ACCURACY;
         lastGoodAccuracyTime = System.currentTimeMillis();
         reRegisterLocationUpdates();
@@ -403,10 +402,10 @@ public class LocationForegroundService extends Service {
 
     private void switchToBalanced() {
         if (currentPriority == Priority.PRIORITY_BALANCED_POWER_ACCURACY) {
-            Log.d(TAG, "[切换] switchToBalanced: 已是网络模式，跳过");
+            TraceLog.d(TAG, "[切换] switchToBalanced: 已是网络模式，跳过");
             return;
         }
-        Log.d(TAG, "[切换] switchToBalanced: 从" + currentPriority + "切换到网络");
+        TraceLog.d(TAG, "[切换] switchToBalanced: 从" + currentPriority + "切换到网络");
         currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY;
         reRegisterLocationUpdates();
     }
@@ -423,7 +422,7 @@ public class LocationForegroundService extends Service {
     }
 
     private Location requestSingleLocation() {
-        Log.d(TAG, "requestSingleLocation: start");
+        TraceLog.d(TAG, "requestSingleLocation: start");
 
         Location location = requestSingleLocationWithPriority(
                 powerSaving ? Priority.PRIORITY_BALANCED_POWER_ACCURACY : Priority.PRIORITY_HIGH_ACCURACY,
@@ -431,20 +430,20 @@ public class LocationForegroundService extends Service {
         );
 
         if (location != null) {
-            Log.d(TAG, "requestSingleLocation: GPS success lat=" + location.getLatitude() + ", lng=" + location.getLongitude() + ", accuracy=" + location.getAccuracy() + "m");
+            TraceLog.d(TAG, "requestSingleLocation: GPS success lat=" + location.getLatitude() + ", lng=" + location.getLongitude() + ", accuracy=" + location.getAccuracy() + "m");
             return location;
         }
 
-        Log.w(TAG, "requestSingleLocation: GPS timeout, falling back to network positioning");
+        TraceLog.w(TAG, "requestSingleLocation: GPS timeout, falling back to network positioning");
         Location networkLocation = requestSingleLocationWithPriority(
                 Priority.PRIORITY_BALANCED_POWER_ACCURACY,
                 30
         );
 
         if (networkLocation != null) {
-            Log.d(TAG, "requestSingleLocation: network success lat=" + networkLocation.getLatitude() + ", lng=" + networkLocation.getLongitude() + ", accuracy=" + networkLocation.getAccuracy() + "m");
+            TraceLog.d(TAG, "requestSingleLocation: network success lat=" + networkLocation.getLatitude() + ", lng=" + networkLocation.getLongitude() + ", accuracy=" + networkLocation.getAccuracy() + "m");
         } else {
-            Log.w(TAG, "requestSingleLocation: all methods failed");
+            TraceLog.w(TAG, "requestSingleLocation: all methods failed");
         }
 
         return networkLocation;
@@ -480,7 +479,7 @@ public class LocationForegroundService extends Service {
 
             boolean waited = latch.await(timeoutSeconds, TimeUnit.SECONDS);
             if (!waited) {
-                Log.w(TAG, "requestSingleLocationWithPriority(" + priority + "): timeout after " + timeoutSeconds + "s");
+                TraceLog.w(TAG, "requestSingleLocationWithPriority(" + priority + "): timeout after " + timeoutSeconds + "s");
                 try {
                     fusedLocationClient.removeLocationUpdates(singleCallback);
                 } catch (Exception e) {
@@ -491,10 +490,10 @@ public class LocationForegroundService extends Service {
             return resultLocation[0];
 
         } catch (SecurityException e) {
-            Log.e(TAG, "SecurityException in requestSingleLocationWithPriority", e);
+            TraceLog.e(TAG, "SecurityException in requestSingleLocationWithPriority", e);
             return null;
         } catch (Exception e) {
-            Log.e(TAG, "Exception in requestSingleLocationWithPriority", e);
+            TraceLog.e(TAG, "Exception in requestSingleLocationWithPriority", e);
             return null;
         }
     }
@@ -502,10 +501,10 @@ public class LocationForegroundService extends Service {
     private void sendLocationToFlutter(Location location) {
         EventChannel.EventSink sink = eventSink != null ? eventSink : LocationPluginBinder.getEventSink();
         if (sink == null) {
-            Log.w(TAG, "sendLocationToFlutter: sink is null, event dropped! lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+            TraceLog.w(TAG, "sendLocationToFlutter: sink is null, event dropped! lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
             return;
         }
-        Log.d(TAG, "sendLocationToFlutter: sink available, sending lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+        TraceLog.d(TAG, "sendLocationToFlutter: sink available, sending lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
 
         java.util.Map<String, Object> locationMap = new java.util.HashMap<>();
         locationMap.put("latitude", location.getLatitude());
@@ -519,10 +518,10 @@ public class LocationForegroundService extends Service {
         try {
             new Handler(Looper.getMainLooper()).post(() -> {
                 sink.success(locationMap);
-                Log.d(TAG, "Location sent to Flutter: lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+                TraceLog.d(TAG, "Location sent to Flutter: lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
             });
         } catch (Exception e) {
-            Log.e(TAG, "Error sending location to Flutter", e);
+            TraceLog.e(TAG, "Error sending location to Flutter", e);
         }
 
         saveLocationToFile(location);
@@ -541,9 +540,9 @@ public class LocationForegroundService extends Service {
                 writer.flush();
                 writer.close();
             }
-            Log.d(TAG, "Track file initialized: " + trackFile.getAbsolutePath());
+            TraceLog.d(TAG, "Track file initialized: " + trackFile.getAbsolutePath());
         } catch (Exception e) {
-            Log.e(TAG, "Failed to init track file", e);
+            TraceLog.e(TAG, "Failed to init track file", e);
         }
     }
 
@@ -566,11 +565,11 @@ public class LocationForegroundService extends Service {
             writer.append(line);
             writer.flush();
             writer.close();
-            Log.d(TAG, "Location saved to file: lat=" + latitude + ", lng=" + longitude);
+            TraceLog.d(TAG, "Location saved to file: lat=" + latitude + ", lng=" + longitude);
         } catch (IOException e) {
-            Log.e(TAG, "Failed to save location to file", e);
+            TraceLog.e(TAG, "Failed to save location to file", e);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to save location to file", e);
+            TraceLog.e(TAG, "Failed to save location to file", e);
         }
     }
 
@@ -644,16 +643,16 @@ public class LocationForegroundService extends Service {
     private void updateNotification(Location loc) {
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) {
-            Log.w(TAG, "updateNotification: NotificationManager is null!");
+            TraceLog.w(TAG, "updateNotification: NotificationManager is null!");
             return;
         }
-        Log.d(TAG, "updateNotification: loc=" + (loc != null ? loc.getLatitude() : null) + "," + (loc != null ? loc.getLongitude() : null) + ", provider=" + (loc != null ? loc.getProvider() : null));
+        TraceLog.d(TAG, "updateNotification: loc=" + (loc != null ? loc.getLatitude() : null) + "," + (loc != null ? loc.getLongitude() : null) + ", provider=" + (loc != null ? loc.getProvider() : null));
         manager.notify(NOTIFICATION_ID, buildNotification(loc));
     }
 
     @Override
     public void onDestroy() {
-        Log.d(TAG, "onDestroy");
+        TraceLog.d(TAG, "onDestroy");
         _isTrackingStatic.set(false);
         if (locationCallback != null) {
             try {

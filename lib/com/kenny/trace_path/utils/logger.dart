@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../services/error_logger_service.dart';
 
 /// 日志级别
 enum LogLevel {
@@ -86,7 +87,8 @@ class Log {
       }
     }
 
-    // TODO: 未来可扩展写入 ErrorLoggerService
+    // 写入 ErrorLoggerService（异步，不阻塞）
+    ErrorLoggerService().logNative(levelStr, tag.name, error != null ? '$message $error' : message);
   }
 
   static String _levelString(LogLevel level) {

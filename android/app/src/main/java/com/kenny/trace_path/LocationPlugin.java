@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.location.Geocoder;
 import android.os.Build;
-import android.util.Log;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodCall;
@@ -24,7 +23,6 @@ public class LocationPlugin {
     public static final String METHOD_CHANNEL_NAME = "com.kenny.trace_path/location_service";
     public static final String EVENT_CHANNEL_NAME = "com.kenny.trace_path/location_events";
     public static final String GEOCODER_CHANNEL_NAME = "com.kenny.trace_path/geocoder_service";
-
     private static final int DEFAULT_INTERVAL = 30;
     private static final boolean DEFAULT_POWER_SAVING = false;
 
@@ -46,14 +44,14 @@ public class LocationPlugin {
         streamHandler = new EventChannel.StreamHandler() {
             @Override
             public void onListen(Object arguments, EventChannel.EventSink events) {
-                Log.d(TAG, "EventChannel onListen: sink=" + (events != null));
+                TraceLog.d(TAG, "EventChannel onListen: sink=" + (events != null));
                 eventSink = events;
                 LocationPluginBinder.setEventSink(events);
             }
 
             @Override
             public void onCancel(Object arguments) {
-                Log.d(TAG, "EventChannel onCancel: eventSink will be null");
+                TraceLog.d(TAG, "EventChannel onCancel: eventSink will be null");
                 eventSink = null;
                 LocationPluginBinder.setEventSink(null);
             }
@@ -78,8 +76,11 @@ public class LocationPlugin {
         );
         geocoderChannel.setMethodCallHandler((call, result) -> handleGeocoderMethodCall(call, result));
 
+        // Initialize TraceLog to forward Android logs to Flutter
+        TraceLog.init(flutterEngine.getDartExecutor().getBinaryMessenger());
+
         notifyServiceEventSinkReady();
-        Log.d(TAG, "LocationPlugin registered");
+        TraceLog.d(TAG, "LocationPlugin registered");
     }
 
     private void notifyServiceEventSinkReady() {
@@ -87,9 +88,9 @@ public class LocationPlugin {
             Intent intent = new Intent(context, LocationForegroundService.class);
             intent.setAction(LocationForegroundService.ACTION_NOTIFY_SINK_READY);
             context.startService(intent);
-            Log.d(TAG, "notifyServiceEventSinkReady sent");
+            TraceLog.d(TAG, "notifyServiceEventSinkReady sent");
         } catch (Exception e) {
-            Log.e(TAG, "notifyServiceEventSinkReady failed", e);
+            TraceLog.e(TAG, "notifyServiceEventSinkReady failed", e);
         }
     }
 
@@ -98,7 +99,7 @@ public class LocationPlugin {
     }
 
     private void handleMethodCall(MethodCall call, MethodChannel.Result result) {
-        Log.d(TAG, "handleMethodCall: method=" + call.method + ", args=" + call.arguments);
+        TraceLog.d(TAG, "handleMethodCall: method=" + call.method + ", args=" + call.arguments);
 
         switch (call.method) {
             case "startLocationService":
@@ -134,7 +135,7 @@ public class LocationPlugin {
     }
 
     private void handleGeocoderMethodCall(MethodCall call, MethodChannel.Result result) {
-        Log.d(TAG, "handleGeocoderMethodCall: method=" + call.method + ", args=" + call.arguments);
+        TraceLog.d(TAG, "handleGeocoderMethodCall: method=" + call.method + ", args=" + call.arguments);
 
         switch (call.method) {
             case "getAddressFromLatLng":
@@ -154,10 +155,10 @@ public class LocationPlugin {
     }
 
     private void getAddressFromLatLng(double latitude, double longitude, MethodChannel.Result result) {
-        Log.d(TAG, "getAddressFromLatLng: lat=" + latitude + ", lng=" + longitude);
+        TraceLog.d(TAG, "getAddressFromLatLng: lat=" + latitude + ", lng=" + longitude);
 
         if (!Geocoder.isPresent()) {
-            Log.w(TAG, "Geocoder is not present on this device");
+            TraceLog.w(TAG, "Geocoder is not present on this device");
             result.success(null);
             return;
         }
@@ -175,23 +176,23 @@ public class LocationPlugin {
                 }
 
                 String formattedAddress = sb.toString();
-                Log.d(TAG, "Geocoder result: " + formattedAddress);
+                TraceLog.d(TAG, "Geocoder result: " + formattedAddress);
                 result.success(formattedAddress);
             } else {
-                Log.d(TAG, "Geocoder returned no addresses");
+                TraceLog.d(TAG, "Geocoder returned no addresses");
                 result.success(null);
             }
         } catch (IOException e) {
-            Log.e(TAG, "Geocoder.getFromLocation failed", e);
+            TraceLog.e(TAG, "Geocoder.getFromLocation failed", e);
             result.error("GEOCODER_ERROR", e.getMessage(), null);
         } catch (Exception e) {
-            Log.e(TAG, "getAddressFromLatLng unexpected error", e);
+            TraceLog.e(TAG, "getAddressFromLatLng unexpected error", e);
             result.error("UNKNOWN_ERROR", e.getMessage(), null);
         }
     }
 
     public void startLocationService(int interval, boolean powerSaving, MethodChannel.Result result) {
-        Log.d(TAG, "startLocationService: interval=" + interval + "s, powerSaving=" + powerSaving);
+        TraceLog.d(TAG, "startLocationService: interval=" + interval + "s, powerSaving=" + powerSaving);
 
         try {
             serviceIntent = new Intent(context, LocationForegroundService.class);
@@ -207,13 +208,13 @@ public class LocationPlugin {
 
             result.success(true);
         } catch (Exception e) {
-            Log.e(TAG, "startLocationService failed", e);
+            TraceLog.e(TAG, "startLocationService failed", e);
             result.error("START_FAILED", e.getMessage(), null);
         }
     }
 
     public void stopLocationService(MethodChannel.Result result) {
-        Log.d(TAG, "stopLocationService");
+        TraceLog.d(TAG, "stopLocationService");
 
         try {
             serviceIntent = new Intent(context, LocationForegroundService.class);
@@ -221,13 +222,13 @@ public class LocationPlugin {
             context.startService(serviceIntent);
             result.success(true);
         } catch (Exception e) {
-            Log.e(TAG, "stopLocationService failed", e);
+            TraceLog.e(TAG, "stopLocationService failed", e);
             result.error("STOP_FAILED", e.getMessage(), null);
         }
     }
 
     public void updateLocationConfig(int interval, boolean powerSaving, MethodChannel.Result result) {
-        Log.d(TAG, "updateLocationConfig: interval=" + interval + "s, powerSaving=" + powerSaving);
+        TraceLog.d(TAG, "updateLocationConfig: interval=" + interval + "s, powerSaving=" + powerSaving);
 
         try {
             serviceIntent = new Intent(context, LocationForegroundService.class);
@@ -237,14 +238,14 @@ public class LocationPlugin {
             context.startService(serviceIntent);
             result.success(true);
         } catch (Exception e) {
-            Log.e(TAG, "updateLocationConfig failed", e);
+            TraceLog.e(TAG, "updateLocationConfig failed", e);
             result.error("UPDATE_CONFIG_FAILED", e.getMessage(), null);
         }
     }
 
     public boolean isLocationServiceRunning() {
         boolean tracking = LocationForegroundService.isServiceTracking();
-        Log.d(TAG, "isLocationServiceRunning: tracking=" + tracking);
+        TraceLog.d(TAG, "isLocationServiceRunning: tracking=" + tracking);
         return tracking;
     }
 
@@ -256,6 +257,6 @@ public class LocationPlugin {
             methodChannel.setMethodCallHandler(null);
         }
         eventSink = null;
-        Log.d(TAG, "LocationPlugin disposed");
+        TraceLog.d(TAG, "LocationPlugin disposed");
     }
 }

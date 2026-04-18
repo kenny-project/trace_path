@@ -131,6 +131,17 @@ class BackgroundLocationService {
     final resolverType = _settingsService.settings.addressResolverType;
     AddressResolver.setResolverType(resolverType);
     Log.i(LogTag.network, '地址解析器已应用: $resolverType (${AddressResolver().name})');
+
+    // 设置只落盘定位相关日志
+    ErrorLoggerService.setPersistEnabledTags({
+      // Flutter 标签
+      'LOCATION',
+      'TRACK',
+      'SERVICE',
+      // Android 标签
+      'LocationForegroundService',
+      'LocationPlugin',
+    });
   }
 
   void _initLocationProvider() {

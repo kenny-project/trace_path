@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// 错误日志标签类型
@@ -33,12 +34,15 @@ class ErrorLoggerService {
 
   String? _logDirPath;
 
-  // 异步写入队列
+  // 异步写入队列（统一处理 Flutter 和原生日志）
   final _writeQueue = <String>[];
   bool _isWriting = false;
 
   // 写入控制信号
   final _controller = StreamController<void>.broadcast();
+
+  // 落盘白名单：null 表示所有 Tag 都落盘，非 null 表示只落盘这些 Tag
+  static Set<String>? _persistEnabledTags;
 
   /// 初始化，获取日志目录路径
   Future<void> init() async {
@@ -52,6 +56,24 @@ class ErrorLoggerService {
 
     // 启动异步处理循环
     _startProcessingLoop();
+
+    // 设置原生日志 MethodChannel 监听
+    _setupNativeLogChannel();
+  }
+
+  static const _nativeLogChannel = MethodChannel('com.kenny.trace_path/native_log');
+
+  void _setupNativeLogChannel() {
+    _nativeLogChannel.setMethodCallHandler((call) async {
+      if (call.method == 'log') {
+        final args = call.arguments as Map<dynamic, dynamic>;
+        final level = args['level'] as String;
+        final tag = args['tag'] as String;
+        final message = args['message'] as String;
+        logNative(level, tag, message);
+      }
+      return null;
+    });
   }
 
   /// 启动异步处理循环
@@ -72,27 +94,20 @@ class ErrorLoggerService {
 
     _isWriting = true;
     try {
-      // 批量处理队列中的所有日志
       final batch = <String>[];
       while (_writeQueue.isNotEmpty) {
         batch.add(_writeQueue.removeAt(0));
       }
 
-      // 批量写入文件
       if (batch.isNotEmpty) {
         await _writeBatchToFile(batch);
       }
     } catch (e) {
-      // 如果写入失败，将日志打印到控制台作为后备
-      for (final line in _writeQueue.take(10)) {
-        print('[ErrorLogger] 写入失败，回退到 console: $line');
-      }
+      print('[ErrorLogger] 写入失败: $e');
     } finally {
       _isWriting = false;
 
-      // 如果队列中还有内容，继续处理
       if (_writeQueue.isNotEmpty) {
-        // 使用 Future.microtask 避免立即递归导致堆栈溢出
         Future.microtask(_processQueueAsync);
       }
     }
@@ -105,7 +120,6 @@ class ErrorLoggerService {
     final file = File('$_logDirPath/$_logFileName');
 
     try {
-      // 检查文件大小，必要时轮转
       if (await file.exists()) {
         final size = await file.length();
         if (size >= _maxFileSizeBytes) {
@@ -113,7 +127,6 @@ class ErrorLoggerService {
         }
       }
 
-      // 追加写入
       final raf = await file.open(mode: FileMode.append);
       try {
         for (final line in batch) {
@@ -136,9 +149,49 @@ class ErrorLoggerService {
     final timestamp = _formatTimestamp(DateTime.now());
     final logLine = '[$timestamp] ${tag.label} $message';
 
-    // 加入写入队列
     _writeQueue.add(logLine);
     _scheduleProcess();
+  }
+
+  /// 记录原生日志（异步写入，不阻塞）
+  /// 原生日志和 Flutter 日志都写入同一个文件
+  Future<void> logNative(String level, String tag, String message) async {
+    // 检查是否需要落盘
+    if (_persistEnabledTags != null && !_persistEnabledTags!.contains(tag)) {
+      return; // 不在白名单中，跳过落盘
+    }
+
+    if (_logDirPath == null) {
+      await init();
+    }
+
+    final timestamp = _formatTimestamp(DateTime.now());
+    final logLine = '[$timestamp] $level [$tag] $message';
+
+    _writeQueue.add(logLine);
+    _scheduleProcess();
+  }
+
+  /// 设置只落盘哪些 Tag 的日志
+  /// [tags] 要落盘的 Tag 集合，null 表示所有都落盘
+  static void setPersistEnabledTags(Set<String>? tags) {
+    _persistEnabledTags = tags;
+  }
+
+  /// 添加一个 Tag 到落盘白名单
+  static void addPersistEnabledTag(String tag) {
+    _persistEnabledTags ??= {};
+    _persistEnabledTags!.add(tag);
+  }
+
+  /// 移除一个 Tag 从落盘白名单
+  static void removePersistEnabledTag(String tag) {
+    _persistEnabledTags?.remove(tag);
+  }
+
+  /// 清空落盘白名单，恢复到所有 Tag 都落盘
+  static void clearPersistEnabledTags() {
+    _persistEnabledTags = null;
   }
 
   /// 记录应用启动
@@ -222,7 +275,7 @@ class ErrorLoggerService {
     await log(ErrorTag.service, msg);
   }
 
-  /// 通用调试日志（所有print输出都走这里）
+  /// 通用调试日志
   Future<void> logDebug(String message) async {
     await log(ErrorTag.debug, message);
   }
@@ -234,20 +287,9 @@ class ErrorLoggerService {
     final log2 = File('$_logDirPath/$_logFileName.2');
 
     try {
-      // 删除最老的
-      if (await log2.exists()) {
-        await log2.delete();
-      }
-
-      // log1 -> log2
-      if (await log1.exists()) {
-        await log1.rename('$_logDirPath/$_logFileName.2');
-      }
-
-      // 当前日志 -> log1
+      if (await log2.exists()) await log2.delete();
+      if (await log1.exists()) await log1.rename('$_logDirPath/$_logFileName.2');
       await file.rename('$_logDirPath/$_logFileName.1');
-
-      // 创建新的空文件
       await file.writeAsString('');
     } catch (e) {
       print('[ErrorLogger] 文件轮转失败: $e');
@@ -270,13 +312,12 @@ class ErrorLoggerService {
     }
   }
 
-  /// 读取所有日志文件（当前 + 轮转的）
+  /// 读取所有日志文件
   Future<Map<String, String>> readAllLogs() async {
     if (_logDirPath == null) await init();
 
     final result = <String, String>{};
 
-    // 读取当前日志
     final currentFile = File('$_logDirPath/$_logFileName');
     if (await currentFile.exists()) {
       try {
@@ -286,7 +327,6 @@ class ErrorLoggerService {
       }
     }
 
-    // 读取轮转日志
     final log1 = File('$_logDirPath/$_logFileName.1');
     if (await log1.exists()) {
       try {
@@ -308,7 +348,7 @@ class ErrorLoggerService {
     return result;
   }
 
-  /// 清空当前日志（不删除文件）
+  /// 清空当前日志
   Future<void> clearCurrentLogs() async {
     if (_logDirPath == null) await init();
 
@@ -339,7 +379,7 @@ class ErrorLoggerService {
     };
   }
 
-  /// 获取队列中待写入的日志数量（用于调试）
+  /// 获取队列中待写入的日志数量
   int get pendingLogs => _writeQueue.length;
 
   String _formatTimestamp(DateTime t) {

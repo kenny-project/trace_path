@@ -3,7 +3,9 @@
     "allow": [
       "Bash(rm -rf /home/wmh/.gradle/wrapper/dists/gradle-8.14-all/c2qonpi39x1mddn7hk5gh9iqj/*.lck)",
       "Bash(pkill -f gradle)",
-      "Read(//home/wmh/Documents/android/location-samples/LocationAddress/app/src/main/java/com/google/android/gms/location/sample/locationaddress/data/**)"
+      "Read(//home/wmh/Documents/android/location-samples/LocationAddress/app/src/main/java/com/google/android/gms/location/sample/locationaddress/data/**)",
+      "Bash(adb -d logcat)",
+      "Bash(adb uninstall *)"
     ],
     "additionalDirectories": [
       "/home/wmh/.gradle/wrapper/dists/gradle-8.14-all/c2qonpi39x1mddn7hk5gh9iqj"
