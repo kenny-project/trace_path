@@ -73,7 +73,6 @@ public class LocationForegroundService extends Service {
     private int currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY;
     private long lastGoodAccuracyTime = 0L;
     private long lastGpsFixTime = 0L;
-    private long lastProcessedTime = 0L;
     private float lastProcessedAccuracy = 0f;
 
     private static final float NETWORK_ACCURACY_THRESHOLD = 100f;
@@ -224,7 +223,7 @@ public class LocationForegroundService extends Service {
         currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY;
 
         _isTrackingStatic.set(true);
-        startForeground(NOTIFICATION_ID, buildNotification());
+        startForeground(NOTIFICATION_ID, buildStartNotification());
 
         locationCallback = new LocationCallback() {
             @Override
@@ -320,7 +319,7 @@ public class LocationForegroundService extends Service {
         }
 
         if (lastLocation != null) {
-            long timeDelta = now - lastProcessedTime;
+            long timeDelta = location.getTime() - lastLocation.getTime();
             float distanceDelta = lastLocation.distanceTo(location);
 
             if (timeDelta < 2000 && distanceDelta < 10.0f) {
@@ -343,14 +342,14 @@ public class LocationForegroundService extends Service {
 
         evaluateAndSwitchPriority(isGps, accuracy, now);
 
+        TraceLog.d(ALFS, "handleLocationResult:updateNotification");
+        updateNotification(location);
+        TraceLog.d(ALFS, "handleLocationResult:sendLocationToFlutter");
+        sendLocationToFlutter(location);
+
         lastLocation = location;
-        lastProcessedTime = now;
         lastProcessedAccuracy = accuracy;
 
-        TraceLog.d(ALFS, "handleLocationResult: sendLocationToFlutter");
-        sendLocationToFlutter(location);
-        TraceLog.d(ALFS, "handleLocationResult: updateNotification");
-        updateNotification(location);
     }
 
     private void evaluateAndSwitchPriority(boolean isGps, float accuracy, long now) {
@@ -592,26 +591,11 @@ public class LocationForegroundService extends Service {
         }
     }
 
-    private Notification buildNotification() {
-        return buildNotification(null);
-    }
+    private Notification buildStartNotification() {
+        String title = "TracePath 正在启动";
+        String content = "定位服务初始化中...";
 
-    private Notification buildNotification(Location loc) {
-        String status = _isTrackingStatic.get() ? "运行中" : "已停止";
-        String mode = powerSaving ? "省电" : "常态";
-        boolean isGps = (loc != null ? loc.getProvider() : (lastLocation != null ? lastLocation.getProvider() : null)) == LocationManager.GPS_PROVIDER;
-        String source = currentPriority == Priority.PRIORITY_HIGH_ACCURACY ? "GPS" : "网络";
-        String locationText;
-        if (lastLocation != null) {
-            locationText = String.format(Locale.getDefault(), "位置: %.6f, %.6f", lastLocation.getLatitude(), lastLocation.getLongitude());
-        } else {
-            locationText = "位置: 获取中...";
-        }
-        String accuracyText = lastLocation != null ? String.format(Locale.getDefault(), "精度: %.0f米", lastLocation.getAccuracy()) : "";
-        String updateTime = lastLocation != null ? "更新: " + timeFormat.format(new Date(lastLocation.getTime())) : "";
-
-        String title = "TracePath [" + source + "] 正在运行";
-        String content = mode + " | " + locationText + " | " + accuracyText + " | " + updateTime;
+        TraceLog.d(ALFS, "buildStartNotification: title=" + title + ", content=" + content);
 
         Intent notificationIntent = new Intent(this, MainActivity.class);
         notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -625,7 +609,7 @@ public class LocationForegroundService extends Service {
                 this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE
         );
 
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(content)
                 .setSmallIcon(R.drawable.ic_notification_icon)
@@ -638,16 +622,81 @@ public class LocationForegroundService extends Service {
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .build();
+
+        TraceLog.d(ALFS, "buildStartNotification END, hashCode=" + notification.hashCode());
+        return notification;
     }
 
-    private void updateNotification(Location loc) {
+    private Notification buildNotification(Location loc) {
+        String mode = powerSaving ? "省电" : "常态";
+        String source = currentPriority == Priority.PRIORITY_HIGH_ACCURACY ? "GPS" : "网络";
+
+        if (loc == null) {
+            TraceLog.w(ALFS, "buildNotification: loc is null, return null");
+            return null;
+        }
+
+        String locationText = String.format(Locale.getDefault(), "位置: %.6f, %.6f", loc.getLatitude(), loc.getLongitude());
+        String accuracyText = String.format(Locale.getDefault(), "精度: %.0f米", loc.getAccuracy());
+        String updateTime = "更新: " + timeFormat.format(new Date(loc.getTime()));
+
+        String title = "TracePath [" + source + "] 正在运行";
+        String content = mode + " | " + locationText + " | " + accuracyText + " | " + updateTime;
+
+        TraceLog.d(ALFS, "buildNotification: title=" + title + ", content=" + content + ", loc=" + loc.getLatitude() + "," + loc.getLongitude());
+
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Intent stopIntent = new Intent(this, LocationForegroundService.class);
+        stopIntent.setAction(ACTION_STOP);
+        PendingIntent stopPendingIntent = PendingIntent.getService(
+                this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle(title)
+                .setContentText(content)
+                .setSmallIcon(R.drawable.ic_notification_icon)
+                .setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(content))
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止", stopPendingIntent)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                .build();
+
+        TraceLog.d(ALFS, "buildNotification END, hashCode=" + notification.hashCode() + ", content=" + content);
+        return notification;
+    }
+
+    private void updateNotification(Location loc)
+    {
+        if (loc == null)
+        {
+            TraceLog.w(ALFS, "updateNotification: loc is null");
+            return;
+        }
+        TraceLog.d(ALFS, "updateNotification START: pos=" + loc.getLatitude() + "," + loc.getLongitude());
+
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) {
             TraceLog.w(ALFS, "updateNotification: NotificationManager is null!");
             return;
         }
-        TraceLog.d(ALFS, "updateNotification: loc=" + (loc != null ? loc.getLatitude() : null) + "," + (loc != null ? loc.getLongitude() : null) + ", provider=" + (loc != null ? loc.getProvider() : null));
-        manager.notify(NOTIFICATION_ID, buildNotification(loc));
+        Notification notification = buildNotification(loc);
+        if( notification == null)
+        {
+            TraceLog.w(ALFS, "updateNotification: notification is null!");
+            return;
+        }
+        manager.notify(NOTIFICATION_ID, notification);
+        TraceLog.d(ALFS, "updateNotification END");
     }
 
     @Override
