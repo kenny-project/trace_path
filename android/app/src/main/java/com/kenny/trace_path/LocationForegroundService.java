@@ -90,36 +90,6 @@ public class LocationForegroundService extends Service {
     private static final float SPEED_DRIVE = 8.0f;
     private long _currentIntervalMs = INTERVAL_STILL;
 
-    private static final long ALIVE_INTERVAL_MS = 60_000L;
-    private static final int ALIVE_REQUEST_CODE = 1001;
-    private final Handler _aliveHandler = new Handler(Looper.getMainLooper());
-    private final Runnable _aliveRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (!_isTrackingStatic.get()) return;
-            TraceLog.w(ALFS, "[保活] 触发，主动拉取位置");
-            try {
-                fusedLocationClient.getLastLocation()
-                        .addOnSuccessListener(location -> {
-                            if (location != null && _isTrackingStatic.get()) {
-                                TraceLog.w(ALFS, "[保活] getLastLocation 成功: lat=" + location.getLatitude() + ", lng=" + location.getLongitude() + ", accuracy=" + location.getAccuracy());
-                                handleLocationResult(location);
-                            } else {
-                                TraceLog.w(ALFS, "[保活] getLastLocation 返回 null，重新注册");
-                                reRegisterLocationUpdates();
-                            }
-                        })
-                        .addOnFailureListener(e -> {
-                            TraceLog.w(ALFS, "[保活] getLastLocation 失败: " + e.getMessage() + "，重新注册");
-                            reRegisterLocationUpdates();
-                        });
-            } catch (SecurityException e) {
-                TraceLog.e(ALFS, "[保活] SecurityException", e);
-            }
-            _aliveHandler.postDelayed(this, ALIVE_INTERVAL_MS);
-        }
-    };
-
     private float getNetworkAccuracyThreshold() {
         return powerSaving ? 80f : NETWORK_ACCURACY_THRESHOLD;
     }
@@ -248,9 +218,6 @@ public class LocationForegroundService extends Service {
 
         requestLocationUpdates();
         TraceLog.d(ALFS, "startTracking: started with priority=" + currentPriority);
-
-        _aliveHandler.removeCallbacks(_aliveRunnable);
-        _aliveHandler.post(_aliveRunnable);
     }
 
     private void requestLocationUpdates() {
@@ -289,8 +256,6 @@ public class LocationForegroundService extends Service {
     private void stopTracking() {
         TraceLog.d(ALFS, "stopTracking called");
         _isTrackingStatic.set(false);
-
-        _aliveHandler.removeCallbacks(_aliveRunnable);
 
         if (locationCallback != null) {
             try {
