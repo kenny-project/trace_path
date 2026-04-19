@@ -55,9 +55,9 @@ public class TraceLog {
     private static String _callerInfo() {
         try {
             StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-            // stack[0]=Thread.getStackTrace, stack[1]=_callerInfo, stack[2]=实际调用者
-            if (stack.length >= 3) {
-                StackTraceElement caller = stack[2];
+            // stack[0]=VMStack, stack[1]=Thread, stack[2]=_callerInfo, stack[3]=TraceLog.d/i/w, stack[4]=实际调用者
+            if (stack.length >= 5) {
+                StackTraceElement caller = stack[4];
                 String fileName = caller.getFileName();
                 int lineNumber = caller.getLineNumber();
                 if (fileName != null && lineNumber > 0) {

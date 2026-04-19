@@ -25,6 +25,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
   bool _showAll = true; // true=显示全部，false=按tag过滤
   bool _isLoading = true;
   bool _tagsInitialized = false;
+  bool _filterVisible = false; // Tag筛选面板是否显示
   String? _error;
 
   @override
@@ -278,6 +279,15 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
         title: const Text('日志'),
         actions: [
           IconButton(
+            icon: Icon(_filterVisible ? Icons.filter_alt : Icons.filter_alt_outlined),
+            onPressed: () {
+              setState(() {
+                _filterVisible = !_filterVisible;
+              });
+            },
+            tooltip: '筛选',
+          ),
+          IconButton(
             icon: const Icon(Icons.copy),
             onPressed: _copyAllLogs,
             tooltip: '复制全部',
@@ -296,7 +306,50 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
       ),
       body: Column(
         children: [
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 200),
+            crossFadeState: _filterVisible ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            firstChild: const SizedBox.shrink(),
+            secondChild: _buildTagFilter(),
+          ),
           Expanded(child: _buildBody()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTagFilter() {
+    if (_availableTags.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              FilterChip(
+                label: const Text('All', style: TextStyle(fontSize: 11)),
+                selected: _showAll,
+                onSelected: (_) => _toggleAll(),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              ..._buildTagChips(),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tag筛选: (${_selectedTags.length}/${_availableTags.length})',
+            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+          ),
         ],
       ),
     );
@@ -347,30 +400,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
 
     return Column(
       children: [
-        // Row 1: All chip + tag chips
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
-          ),
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: [
-              FilterChip(
-                label: const Text('All', style: TextStyle(fontSize: 11)),
-                selected: _showAll,
-                onSelected: (_) => _toggleAll(),
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              ..._buildTagChips(),
-            ],
-          ),
-        ),
-        // Row 2: log count left, tag filter count right
+        // Row 2: log count
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           color: Colors.grey[200],
@@ -381,11 +411,6 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
               Text(
                 '共 ${_filteredLogs.length} 行日志',
                 style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const Spacer(),
-              Text(
-                'Tag筛选: (${_selectedTags.length}/${_availableTags.length})',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
             ],
           ),
