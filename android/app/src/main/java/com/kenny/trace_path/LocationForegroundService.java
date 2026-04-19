@@ -14,6 +14,10 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
+
+import java.util.Timer;
+import java.util.TimerTask;
 
 import androidx.core.app.NotificationCompat;
 
@@ -73,7 +77,6 @@ public class LocationForegroundService extends Service {
     private int currentPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY;
     private long lastGoodAccuracyTime = 0L;
     private long lastGpsFixTime = 0L;
-    private float lastProcessedAccuracy = 0f;
 
     private static final float NETWORK_ACCURACY_THRESHOLD = 100f;
     private static final float GPS_ACCURACY_THRESHOLD = 50f;
@@ -81,7 +84,7 @@ public class LocationForegroundService extends Service {
     private static final long GPS_NO_FIX_TIMEOUT_MS = 120_000L;
     private int _gpsStableCount = 0;
 
-    private static final long INTERVAL_STILL = 60_000L;
+    private static final long INTERVAL_STILL = 20_000L;
     private static final long INTERVAL_WALK = 30_000L;
     private static final long INTERVAL_BIKE = 15_000L;
     private static final long INTERVAL_DRIVE = 10_000L;
@@ -99,6 +102,11 @@ public class LocationForegroundService extends Service {
     }
 
     private EventChannel.EventSink eventSink;
+
+    // GPS 健康检查定时器
+    private Timer _healthTimer;
+    private long _lastLocationReceivedTime = 0L;
+    private Boolean _lastLocationAvailable = null; // 上一次 GPS 可用状态，仅当变化时触发重启
 
     private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
     private final SimpleDateFormat dateFormatFile = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
@@ -138,17 +146,12 @@ public class LocationForegroundService extends Service {
                 intervalSeconds = intent.getIntExtra("interval", DEFAULT_INTERVAL_SECONDS);
                 powerSaving = intent.getBooleanExtra("powerSaving", DEFAULT_POWER_SAVING);
                 TraceLog.d(ALFS, "onStartCommand START: interval=" + intervalSeconds + "s, powerSaving=" + powerSaving);
-                if (_isTrackingStatic.get() && locationCallback != null) {
-                    TraceLog.d(ALFS, "Already tracking, stopping first then restart with new config");
-                    stopTracking();
-                }
                 startTracking();
                 break;
 
             case ACTION_STOP:
                 stopTracking();
                 break;
-
             case ACTION_UPDATE_CONFIG:
                 intervalSeconds = intent.getIntExtra("interval", DEFAULT_INTERVAL_SECONDS);
                 powerSaving = intent.getBooleanExtra("powerSaving", DEFAULT_POWER_SAVING);
@@ -165,13 +168,13 @@ public class LocationForegroundService extends Service {
                 EventChannel.EventSink sink = eventSink != null ? eventSink : LocationPluginBinder.getEventSink();
                 TraceLog.d(ALFS, "ACTION_NOTIFY_SINK_READY: isTracking=" + _isTrackingStatic.get() + ", lastLocation=" + (lastLocation != null) + ", sink=" + (sink != null));
                 if (sink == null) {
-                    TraceLog.w(ALFS, "ACTION_NOTIFY_SINK_READY: sink is null, cannot send");
+                    TraceLog.e(ALFS, "onStartCommand fail, ACTION_NOTIFY_SINK_READY: sink is null, cannot send");
                 } else if (_isTrackingStatic.get() && locationCallback != null) {
                     if (lastLocation != null) {
                         sendLocationToFlutter(lastLocation);
                     }
                 } else {
-                    TraceLog.d(ALFS, "ACTION_NOTIFY_SINK_READY: service was killed, auto-restarting tracking");
+                    TraceLog.d(ALFS, "onStartCommand debug, ACTION_NOTIFY_SINK_READY: service was killed, auto-restarting tracking");
                     startTracking();
                 }
                 break;
@@ -181,10 +184,13 @@ public class LocationForegroundService extends Service {
     }
 
     private void startTracking() {
-        if (_isTrackingStatic.get() && locationCallback != null) {
-            TraceLog.w(ALFS, "Already tracking, ignore");
-            return;
+
+        if (_isTrackingStatic.get() && locationCallback != null)
+        {
+            TraceLog.d(ALFS, "startTracking debug, stopping first then restart with new config");
+            stopTracking();
         }
+        TraceLog.d(ALFS, "startTracking: started with priority=" + currentPriority);
 
         _isTrackingStatic.set(false);
         lastGoodAccuracyTime = 0L;
@@ -206,28 +212,33 @@ public class LocationForegroundService extends Service {
 
             @Override
             public void onLocationAvailability(LocationAvailability availability) {
-                TraceLog.d(ALFS, "LocationAvailability: isLocationAvailable=" + availability.isLocationAvailable());
-                if (!availability.isLocationAvailable() && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
+                boolean available = availability.isLocationAvailable();
+                TraceLog.d(ALFS, "LocationAvailability: isLocationAvailable=" + available);
+                if (!available && currentPriority == Priority.PRIORITY_HIGH_ACCURACY) {
                     lastGpsFixTime = System.currentTimeMillis();
                 }
-                if (availability.isLocationAvailable()) {
+                // 仅当状态从 false → true 变化时才触发重启，避免重复消息死循环
+                if (available && (_lastLocationAvailable == null || !_lastLocationAvailable)) {
                     lastGpsFixTime = 0L;
+                    TraceLog.d(ALFS, "GPS restored, re-registering location updates");
+                    reRegisterLocationUpdates();
                 }
+                _lastLocationAvailable = available;
             }
         };
 
         requestLocationUpdates();
-        TraceLog.d(ALFS, "startTracking: started with priority=" + currentPriority);
+        _startHealthTimer();
     }
 
     private void requestLocationUpdates() {
         if (!_isTrackingStatic.get()) {
-            TraceLog.w(ALFS, "requestLocationUpdates: skipped, _isTrackingStatic=false");
+            TraceLog.e(ALFS, "requestLocationUpdates fail, skipped, _isTrackingStatic=false");
             return;
         }
 
         if (locationCallback == null) {
-            TraceLog.w(ALFS, "requestLocationUpdates: skipped, locationCallback=null");
+            TraceLog.e(ALFS, "requestLocationUpdates fail, skipped, locationCallback=null");
             return;
         }
 
@@ -245,11 +256,11 @@ public class LocationForegroundService extends Service {
                     locationCallback,
                     Looper.getMainLooper()
             );
-            TraceLog.d(ALFS, "requestLocationUpdates: end");
+            TraceLog.d(ALFS, "requestLocationUpdates success");
         } catch (SecurityException e) {
-            TraceLog.e(ALFS, "requestLocationUpdates: SecurityException", e);
+            TraceLog.e(ALFS, "requestLocationUpdates fail, SecurityException", e);
         } catch (Exception e) {
-            TraceLog.e(ALFS, "requestLocationUpdates: Exception", e);
+            TraceLog.e(ALFS, "requestLocationUpdates fail, Exception", e);
         }
     }
 
@@ -265,6 +276,7 @@ public class LocationForegroundService extends Service {
             }
         }
         locationCallback = null;
+        _cancelHealthTimer();
 
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
@@ -275,6 +287,7 @@ public class LocationForegroundService extends Service {
         float accuracy = location.getAccuracy();
         long now = System.currentTimeMillis();
         float speed = location.hasSpeed() ? location.getSpeed() : -1f;
+        _lastLocationReceivedTime = now;
 
         TraceLog.d(ALFS, "handleLocationResult: pos=" + location.getLongitude() + "," + location.getLatitude() + ", isGps=" + isGps + ", accuracy=" + accuracy + ",speed=" + speed + "m/s");
 
@@ -313,28 +326,26 @@ public class LocationForegroundService extends Service {
         sendLocationToFlutter(location);
 
         lastLocation = location;
-        lastProcessedAccuracy = accuracy;
-
     }
 
     private void evaluateAndSwitchPriority(boolean isGps, float accuracy, long now) {
-        String currentMode = (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) ? "GPS" : "网络";
-        TraceLog.d(ALFS, "[自适应] evaluateAndSwitchPriority: currentMode=" + currentMode + ", isGps=" + isGps + ", accuracy=" + accuracy);
+        String currentMode = (currentPriority == Priority.PRIORITY_HIGH_ACCURACY) ? "GPS" : "network";
+        TraceLog.d(ALFS, "evaluateAndSwitchPriority debug, currentMode=" + currentMode + ", isGps=" + isGps + ", accuracy=" + accuracy);
 
         float networkThreshold = getNetworkAccuracyThreshold();
         float gpsThreshold = getGpsAccuracyThreshold();
 
         if (currentPriority == Priority.PRIORITY_BALANCED_POWER_ACCURACY) {
             if (accuracy > networkThreshold) {
-                TraceLog.d(ALFS, "[自适应] 网络定位精度=" + accuracy + "m > " + networkThreshold + "m，切换到 GPS");
+                TraceLog.d(ALFS, "evaluateAndSwitchPriority debug, network accuracy=" + accuracy + "m > " + networkThreshold + "m, switch to Gps accuracy mode");
                 switchToHighAccuracy();
             }
         } else {
             if (isGps && accuracy <= gpsThreshold) {
                 _gpsStableCount++;
-                TraceLog.d(ALFS, "[自适应] GPS 精度好=" + accuracy + "m (" + _gpsStableCount + "/" + GPS_STABLE_COUNT_THRESHOLD + ")");
+                TraceLog.d(ALFS, "evaluateAndSwitchPriority debug, gps accuracy=" + accuracy + "m (" + _gpsStableCount + "/" + GPS_STABLE_COUNT_THRESHOLD + ")");
                 if (_gpsStableCount >= GPS_STABLE_COUNT_THRESHOLD) {
-                    TraceLog.d(ALFS, "[自适应] GPS 连续" + _gpsStableCount + "次精度好，切回网络定位省电");
+                    TraceLog.d(ALFS, "evaluateAndSwitchPriority debug, gps accuracy stable " + _gpsStableCount + " times");
                     _gpsStableCount = 0;
                     switchToBalanced();
                 }
@@ -345,7 +356,7 @@ public class LocationForegroundService extends Service {
             if (isGps && lastGpsFixTime > 0) {
                 long gpsNoFixDuration = now - lastGpsFixTime;
                 if (gpsNoFixDuration > GPS_NO_FIX_TIMEOUT_MS) {
-                    TraceLog.d(ALFS, "[自适应] GPS 连续" + gpsNoFixDuration + "ms精度差，切回网络定位");
+                    TraceLog.d(ALFS, "evaluateAndSwitchPriority debug, gps no fix duration " + gpsNoFixDuration + "ms");
                     _gpsStableCount = 0;
                     switchToBalanced();
                 }
@@ -383,6 +394,47 @@ public class LocationForegroundService extends Service {
             }
         }
         requestLocationUpdates();
+    }
+
+    /// 启动 GPS 健康检查定时器
+    private void _startHealthTimer() {
+        _cancelHealthTimer();
+        long checkInterval = Math.max(_currentIntervalMs * 2, 30_000L); // 至少30秒
+        _healthTimer = new Timer();
+        _healthTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                _checkLocationHealth();
+            }
+        }, checkInterval, checkInterval);
+        TraceLog.d(ALFS, "Health timer started, interval=" + checkInterval + "ms");
+    }
+
+    /// 取消 GPS 健康检查定时器
+    private void _cancelHealthTimer() {
+        if (_healthTimer != null) {
+            _healthTimer.cancel();
+            _healthTimer = null;
+        }
+    }
+
+    /// GPS 健康检查：超过 interval*3 没有新位置则强制重启定位
+    private void _checkLocationHealth() {
+        if (!_isTrackingStatic.get() || _lastLocationReceivedTime == 0L) {
+            TraceLog.e(ALFS, "Location health check fail, not tracking or no location received, skip, isTracking="+_isTrackingStatic.get() + ", lastLocationReceivedTime="+_lastLocationReceivedTime);
+            return;
+        }
+        long elapsed = System.currentTimeMillis() - _lastLocationReceivedTime;
+        long threshold = _currentIntervalMs * 3;
+        if (elapsed > threshold) {
+            TraceLog.w(ALFS, "Location health check: no location for " + elapsed + "ms, force restart (threshold="
+                    + threshold + "ms)");
+            reRegisterLocationUpdates();
+            _lastLocationReceivedTime = System.currentTimeMillis(); // 重置避免重复触发
+        }
+        else {
+            TraceLog.d(ALFS, "Location health check: location received, skip, elapsed="+elapsed+"ms, threshold="+threshold+"ms");
+        }
     }
 
     private Location requestSingleLocation() {
@@ -673,6 +725,7 @@ public class LocationForegroundService extends Service {
             }
         }
         locationCallback = null;
+        _cancelHealthTimer();
         super.onDestroy();
     }
 

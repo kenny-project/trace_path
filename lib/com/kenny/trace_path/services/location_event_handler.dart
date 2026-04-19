@@ -20,18 +20,18 @@ class LocationEventHandler {
 
   /// 启动监听
   void startListening() {
-    Log.d(LogTag.FBLS, '★★★ LocationEventHandler.startListening ★★★');
+    Log.d(LogTag.FLEH, '★★★ LocationEventHandler.startListening ★★★');
     _eventSubscription?.cancel();
     _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
       (dynamic event) {
-        Log.d(LogTag.FBLS, 'EventChannel received event: ${event.runtimeType}');
+        Log.d(LogTag.FLEH, 'EventChannel received event: ${event.runtimeType}');
         _handleLocationEvent(event);
       },
       onError: (dynamic error) {
-        Log.e(LogTag.FBLS, 'EventChannel error: $error');
+        Log.e(LogTag.FLEH, 'EventChannel error: $error');
       },
     );
-    Log.d(LogTag.FBLS, 'EventChannel listener registered');
+    Log.d(LogTag.FLEH, 'EventChannel listener registered');
   }
 
   /// 停止监听
@@ -42,10 +42,10 @@ class LocationEventHandler {
 
   /// 处理原生服务推送的位置
   void _handleLocationEvent(dynamic event) {
-    Log.d(LogTag.FBLS, '_handleLocationEvent called event=${event.runtimeType}: $event');
+    Log.d(LogTag.FLEH, '_handleLocationEvent called event=${event.runtimeType}: $event');
 
     if (event is! Map) {
-      Log.w(LogTag.FBLS, 'Invalid event type: ${event.runtimeType}');
+      Log.w(LogTag.FLEH, 'Invalid event type: ${event.runtimeType}');
       return;
     }
 
@@ -58,11 +58,11 @@ class LocationEventHandler {
       final timestamp = (event['timestamp'] as num?)?.toInt();
 
       if (latitude == null || longitude == null) {
-        Log.w(LogTag.FBLS, 'Invalid location data: $event');
+        Log.w(LogTag.FLEH, 'Invalid location data: $event');
         return;
       }
 
-      Log.d(LogTag.FBLS, 'Received location event: lat=$latitude, lng=$longitude, acc=$accuracy, time=${timestamp != null ? DateTime.fromMillisecondsSinceEpoch(timestamp).toIso8601String() : "null"}');
+      Log.d(LogTag.FLEH, 'Received location event: lat=$latitude, lng=$longitude, acc=$accuracy, time=${timestamp != null ? DateTime.fromMillisecondsSinceEpoch(timestamp).toIso8601String() : "null"}');
 
       // 构造 Position 对象
       final position = Position(
@@ -85,23 +85,26 @@ class LocationEventHandler {
       // 首次定位记录
       if (!_hasFirstLocation) {
         _hasFirstLocation = true;
-        Log.i(LogTag.FBLS, '首次定位成功: lat=$latitude, lng=$longitude, acc=${accuracy ?? 0.0}m');
+        Log.i(LogTag.FLEH, 'handleLocationEvent debug, first location success: lat=$latitude, lng=$longitude, acc=${accuracy ?? 0.0}m');
       }
 
       // 每10次成功记录一次
-      if (_successCount % 10 == 0) {
-        Log.d(LogTag.FBLS, 'GPS成功($_successCount次): lat=$latitude, lng=$longitude, acc=${accuracy ?? 0.0}m');
+      if (_successCount % 1 == 0) {
+        Log.d(LogTag.FLEH, 'handleLocationEvent debug, location success: $_successCount: pos=$latitude, $longitude, acc=${accuracy ?? 0.0}m');
       }
 
       // 触发回调
       if (onLocationEvent != null) {
         onLocationEvent!(LocationEvent.position(position));
       }
+      else {
+        Log.w(LogTag.FLEH, 'handleLocationEvent debug, no callback registered for location event');
+      }
 
       // 保存到本地
       _saveToLocal(position);
     } catch (e, s) {
-      Log.e(LogTag.FBLS, '处理位置事件异常', e, s);
+      Log.e(LogTag.FLEH, 'handleLocationEvent debug, error processing location event', e, s);
     }
   }
 
@@ -110,7 +113,7 @@ class LocationEventHandler {
     try {
       await TrackRecorder().record(position);
     } catch (e, s) {
-      Log.e(LogTag.TRACK, '保存位置失败', e, s);
+      Log.e(LogTag.FLEH, 'saveToLocal debug, error saving location to local storage', e, s);
     }
   }
 
@@ -118,5 +121,6 @@ class LocationEventHandler {
   void reset() {
     _successCount = 0;
     _hasFirstLocation = false;
+    Log.d(LogTag.FLEH, 'handleLocationEvent debug, reset location event handler');
   }
 }

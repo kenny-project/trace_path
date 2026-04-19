@@ -168,6 +168,7 @@ class _LocationPageState extends State<LocationPage>
       );
     } catch (e) {
       // 地址解析失败静默忽略，位置和时间已更新
+      print('[LocationPage] resolveAndUpdateAddress debug, error resolving address from lat=$lat, lng=$lng, error=$e');
     }
   }
 

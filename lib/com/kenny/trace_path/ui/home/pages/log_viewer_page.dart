@@ -16,6 +16,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
   final ScrollController _scrollController = ScrollController();
   final _spKeySelectedTags = 'log_viewer_selected_tags';
   final _spKeyShowAll = 'log_viewer_show_all';
+  final _spKeyFilterModeActive = 'log_viewer_filter_mode_active';
 
   List<LogLine> _allLogs = []; // 所有日志（用于统计各tag数量）
   List<LogLine> _filteredLogs = []; // 过滤后的日志（用于显示）
@@ -23,6 +24,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
   Set<String> _availableTags = {};
   Set<String> _selectedTags = {};
   bool _showAll = true; // true=显示全部，false=按tag过滤
+  bool _filterModeActive = false; // 是否处于过滤模式（无论是否有选中标签）
   bool _isLoading = true;
   bool _tagsInitialized = false;
   bool _filterVisible = false; // Tag筛选面板是否显示
@@ -66,6 +68,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
         _availableTags = allTags;
         _selectedTags = await _loadSelectedTags();
         _showAll = await _loadShowAll();
+        _filterModeActive = await _loadFilterModeActive();
         _tagsInitialized = true;
       }
 
@@ -101,13 +104,16 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
   }
 
   void _applyFilter() {
-    if (!_showAll && _selectedTags.isNotEmpty) {
-      // 非 showAll 模式且有选中 tag 时才过滤
+    if (_filterModeActive && _selectedTags.isNotEmpty) {
+      // 过滤模式且有选中 tag 时才过滤
       _filteredLogs = _allLogs.where((log) {
         return log.tag != null && _selectedTags.contains(log.tag);
       }).toList();
+    } else if (_filterModeActive && _selectedTags.isEmpty) {
+      // 过滤模式但无选中 tag：显示空
+      _filteredLogs = [];
     } else {
-      // showAll 模式或无选中 tag：显示全部
+      // 非过滤模式：显示全部
       _filteredLogs = List.from(_allLogs);
     }
   }
@@ -124,7 +130,16 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
     try {
       final sp = await SharedPreferences.getInstance();
       await sp.setBool(_spKeyShowAll, _showAll);
+      await sp.setBool(_spKeyFilterModeActive, _filterModeActive);
     } catch (_) {}
+  }
+
+  Future<bool> _loadFilterModeActive() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      return sp.getBool(_spKeyFilterModeActive) ?? false;
+    } catch (_) {}
+    return false;
   }
 
   Future<Set<String>> _loadSelectedTags() async {
@@ -166,8 +181,9 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
     }
     setState(() {
       _selectedTags = newTags;
-      // 如果有选中tag则退出showAll模式
+      // 如果有选中tag则进入过滤模式
       if (newTags.isNotEmpty) {
+        _filterModeActive = true;
         _showAll = false;
       }
     });
@@ -182,15 +198,21 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
 
   void _toggleAll() {
     // All chip 点击切换：
-    // - 当前 showAll 模式 → 进入过滤模式，选中所有 tag
-    // - 当前过滤模式 → 退出过滤，回到 showAll 模式
+    // - 第一次点击：全选所有标签
+    // - 第二次点击：取消所有选择（显示空列表）
+    // - 第三次点击：重新全选
     setState(() {
-      if (_showAll) {
+      if (!_filterModeActive) {
+        // 未在过滤模式 → 进入过滤模式并全选
+        _filterModeActive = true;
         _showAll = false;
         _selectedTags = {..._availableTags};
-      } else {
-        _showAll = true;
+      } else if (_selectedTags.length == _availableTags.length) {
+        // 已在过滤模式且已全选 → 取消所有选择
         _selectedTags = {};
+      } else {
+        // 过滤模式且未全选 → 重新全选
+        _selectedTags = {..._availableTags};
       }
     });
     _saveSelectedTags();
@@ -336,7 +358,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
             children: [
               FilterChip(
                 label: const Text('All', style: TextStyle(fontSize: 11)),
-                selected: _showAll,
+                selected: !_filterModeActive || _selectedTags.length == _availableTags.length,
                 onSelected: (_) => _toggleAll(),
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,

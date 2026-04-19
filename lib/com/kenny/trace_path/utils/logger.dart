@@ -18,6 +18,7 @@ class LogTag {
 
   static const DEBUG = LogTag('DEBUG', '🔍');
   static const FBLS = LogTag('FBLS', '📍');
+  static const FLEH = LogTag('FLEH', '🔍');
   static const TRACK = LogTag('TRACK', '🛤️');
   static const SRVC = LogTag('SRVC', '⚙️');
   static const UI = LogTag('UI', '🖼️');

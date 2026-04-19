@@ -135,7 +135,6 @@ public class LocationPlugin {
     }
 
     private void handleGeocoderMethodCall(MethodCall call, MethodChannel.Result result) {
-        TraceLog.d(TAG, "handleGeocoderMethodCall: method=" + call.method + ", args=" + call.arguments);
 
         switch (call.method) {
             case "getAddressFromLatLng":
@@ -143,13 +142,14 @@ public class LocationPlugin {
                 Double lng = call.argument("longitude");
                 if (lat == null || lng == null) {
                     result.error("INVALID_ARGS", "latitude and longitude are required", null);
+                    TraceLog.e(TAG, "handleGeocoderMethodCall fail, lat or lng is null, method=" + call.method + ", args=" + call.arguments + ", error=INVALID_ARGS");
                     return;
                 }
                 getAddressFromLatLng(lat, lng, result);
                 break;
-
             default:
                 result.notImplemented();
+                TraceLog.e(TAG, "handleGeocoderMethodCall fail, method=" + call.method + ", args=" + call.arguments);
                 break;
         }
     }

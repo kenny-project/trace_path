@@ -127,6 +127,22 @@ class CoordinateUtils {
     return true;
   }
 
+  /// 计算两点之间的距离（米），基于 Haversine 公式
+  /// [lat1], [lng1] 第一个点的纬度和经度
+  /// [lat2], [lng2] 第二个点的纬度和经度
+  static double distance(double lat1, double lng1, double lat2, double lng2) {
+    const double r = 6371000; // 地球半径（米）
+    double dLat = _toRad(lat2 - lat1);
+    double dLng = _toRad(lng2 - lng1);
+    double a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_toRad(lat1)) * math.cos(_toRad(lat2)) *
+        math.sin(dLng / 2) * math.sin(dLng / 2);
+    double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return r * c;
+  }
+
+  static double _toRad(double deg) => deg * _pi / 180;
+
   static double _transformLat(double x, double y) {
     double ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y;
     double sqrtX = x >= 0 ? x : -x;
