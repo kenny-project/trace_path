@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import '../utils/logger.dart';
-import 'error_logger_service.dart';
 import 'track_recorder.dart';
 import 'user_service.dart';
 
@@ -118,8 +117,6 @@ class KotlinTrackRecovery {
 
       if (recoveredCount > 0) {
         Log.i(LogTag.TRACK, '从 Kotlin 侧恢复了 $recoveredCount 个轨迹点');
-        await ErrorLoggerService().logService(
-            action: 'KOTLIN_TRACK_RECOVERED', extra: 'count=$recoveredCount');
       }
 
       // 恢复成功后删除 CSV，避免重复恢复

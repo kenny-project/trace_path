@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:csv/csv.dart';
+import '../utils/logger.dart';
 
 /// CSV存储服务（已废弃）
 /// @deprecated 请使用 [CompressedTrackStorage] 代替
@@ -81,7 +82,7 @@ class CsvStorageService {
       await file.writeAsString('$csv\n', mode: FileMode.append);
       return true;
     } catch (e) {
-      print('[CsvStorageService] 保存失败: $e');
+      Log.d(LogTag.STORAGE,'CsvStorageService 保存失败: $e');
       return false;
     }
   }
@@ -106,7 +107,7 @@ class CsvStorageService {
       // 去掉表头
       return rows.length > 1 ? rows.sublist(1) : null;
     } catch (e) {
-      print('[CsvStorageService] 读取失败: $e');
+      Log.d(LogTag.STORAGE,'CsvStorageService 读取失败: $e');
       return null;
     }
   }
@@ -157,7 +158,7 @@ class CsvStorageService {
       _lastPoint = null;
       _currentFile = null;
     } catch (e) {
-      print('[CsvStorageService] 清空失败: $e');
+      Log.d(LogTag.STORAGE,'CsvStorageService 清空失败: $e');
     }
   }
 
@@ -165,7 +166,7 @@ class CsvStorageService {
   /// 返回是否成功
   /// 注意：share_plus 已移除，暂未实现
   Future<bool> exportDayTrack(String date) async {
-    print('[CsvStorageService] 导出功能暂未实现');
+    Log.d(LogTag.STORAGE,'CsvStorageService 导出功能暂未实现');
     return false;
   }
 
@@ -173,7 +174,7 @@ class CsvStorageService {
   /// 返回导入的记录数，失败返回-1
   /// 注意：file_picker 已移除，暂未实现
   Future<int> importDayTrack() async {
-    print('[CsvStorageService] 导入功能暂未实现');
+    Log.d(LogTag.STORAGE,'CsvStorageService 导入功能暂未实现');
     return 0;
   }
 }

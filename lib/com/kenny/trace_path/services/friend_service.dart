@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import '../models/friend_model.dart';
+import '../utils/logger.dart';
 import 'user_service.dart';
 
 /// 好友存储接口（用于依赖注入和测试）
@@ -26,7 +27,7 @@ class FileBasedFriendStorage implements FriendStorage {
       final List<dynamic> jsonList = jsonDecode(content);
       return jsonList.map((json) => Friend.fromJson(json as Map<String, dynamic>)).toList();
     } catch (e) {
-      print('[FileBasedFriendStorage] 加载失败: $e');
+      Log.e(LogTag.SRVC, 'FileBasedFriendStorage 加载失败: $e');
       return [];
     }
   }
@@ -39,7 +40,7 @@ class FileBasedFriendStorage implements FriendStorage {
       final jsonList = friends.map((f) => f.toJson()).toList();
       await file.writeAsString(jsonEncode(jsonList));
     } catch (e) {
-      print('[FileBasedFriendStorage] 保存失败: $e');
+      Log.e(LogTag.SRVC, 'FileBasedFriendStorage 保存失败: $e');
     }
   }
 
@@ -52,7 +53,7 @@ class FileBasedFriendStorage implements FriendStorage {
         await file.delete();
       }
     } catch (e) {
-      print('[FileBasedFriendStorage] 清除失败: $e');
+      Log.e(LogTag.SRVC, 'FileBasedFriendStorage 清除失败: $e');
     }
   }
 }

@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import '../utils/coordinate_utils.dart';
+import '../utils/logger.dart';
 import 'user_service.dart';
 import 'track_storage_manager.dart';
 import 'compressed_track_storage.dart';
@@ -111,7 +112,7 @@ class LocalCsvStorage implements TrackStorage {
     if (point.latitude.isNaN || point.latitude.isInfinite ||
         point.longitude.isNaN || point.longitude.isInfinite ||
         (point.latitude == 0 && point.longitude == 0)) {
-      print('[LocalCsvStorage] 跳过无效坐标: lat=${point.latitude}, lng=${point.longitude}');
+      Log.w(LogTag.STORAGE, 'LocalCsvStorage 跳过无效坐标: lat=${point.latitude}, lng=${point.longitude}');
       return;
     }
 
@@ -136,9 +137,9 @@ class LocalCsvStorage implements TrackStorage {
 
       await file.writeAsString('${point.toCsvLine()}\n', mode: FileMode.append);
 
-      print('[LocalCsvStorage] 写入轨迹点: ${point.toCsvLine()}');
+      Log.d(LogTag.STORAGE, 'LocalCsvStorage 写入轨迹点: ${point.toCsvLine()}');
     } catch (e) {
-      print('[LocalCsvStorage] 写入失败: $e');
+      Log.e(LogTag.STORAGE, 'LocalCsvStorage 写入失败: $e');
     }
   }
 
@@ -169,7 +170,7 @@ class LocalCsvStorage implements TrackStorage {
 
       return points;
     } catch (e) {
-      print('[LocalCsvStorage] 读取失败: $e');
+      Log.w(LogTag.STORAGE,'LocalCsvStorage 读取失败: $e');
       return [];
     }
   }
@@ -182,10 +183,10 @@ class LocalCsvStorage implements TrackStorage {
 
       if (await file.exists()) {
         await file.delete();
-        print('[LocalCsvStorage] 删除轨迹文件: $filePath');
+        Log.w(LogTag.STORAGE,'LocalCsvStorage 删除轨迹文件: $filePath');
       }
     } catch (e) {
-      print('[LocalCsvStorage] 删除失败: $e');
+      Log.w(LogTag.STORAGE,'LocalCsvStorage 删除失败: $e');
     }
   }
 
@@ -213,13 +214,13 @@ class LocalCsvStorage implements TrackStorage {
   @override
   Future<void> syncToServer(String phoneNumber) async {
     // TODO: 实现服务器上报
-    print('[LocalCsvStorage] syncToServer: 待实现');
+    Log.w(LogTag.STORAGE,'LocalCsvStorage syncToServer: 待实现');
   }
 
   @override
   Future<void> pullFromServer(String phoneNumber) async {
     // TODO: 实现服务器拉取
-    print('[LocalCsvStorage] pullFromServer: 待实现');
+    Log.w(LogTag.STORAGE,'LocalCsvStorage pullFromServer: 待实现');
   }
 
   /// 解析 CSV 行
@@ -237,7 +238,7 @@ class LocalCsvStorage implements TrackStorage {
         accuracy: double.parse(parts[5]),
       );
     } catch (e) {
-      print('[LocalCsvStorage] 解析 CSV 行失败: $line, error: $e');
+      Log.w(LogTag.STORAGE,'LocalCsvStorage 解析 CSV 行失败: $line, error: $e');
       return null;
     }
   }

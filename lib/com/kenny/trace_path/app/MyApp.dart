@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../ui/home/pages/home_page.dart';
 import '../services/background_location_service.dart';
 import '../services/error_logger_service.dart';
+import '../utils/logger.dart';
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -11,8 +12,6 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
-  final ErrorLoggerService _errorLogger = ErrorLoggerService();
-
   @override
   void initState() {
     super.initState();
@@ -23,18 +22,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   /// 初始化核心服务
   /// 在应用启动时立即初始化，避免依赖特定页面
   Future<void> _initializeServices() async {
-    await _errorLogger.init();
-    _errorLogger.logAppStart();
+    // 确保日志服务先初始化，避免 Log 调用时 init 未完成
+    await ErrorLoggerService().init();
+
+    Log.i(LogTag.SRVC, 'APP_START');
     // 初始化定位服务（后台启动，不阻塞 UI）
     BackgroundLocationService().init().catchError((e) {
-      _errorLogger.logService(action: 'APP_INIT_FAILED', extra: 'error=$e');
+      Log.e(LogTag.SRVC, 'APP_INIT_FAILED: $e');
     });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _errorLogger.logAppStop();
+    Log.i(LogTag.SRVC, 'APP_STOP');
     super.dispose();
   }
 

@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/location_event.dart';
 import '../utils/logger.dart';
-import 'error_logger_service.dart';
 import 'track_recorder.dart';
 
 /// 定位事件处理器
@@ -11,8 +10,6 @@ import 'track_recorder.dart';
 /// 负责处理来自原生 EventChannel 的定位事件
 class LocationEventHandler {
   static const _eventChannel = EventChannel('com.kenny.trace_path/location_events');
-
-  final ErrorLoggerService _errorLogger = ErrorLoggerService();
 
   StreamSubscription<dynamic>? _eventSubscription;
   int _successCount = 0;
@@ -31,8 +28,7 @@ class LocationEventHandler {
         _handleLocationEvent(event);
       },
       onError: (dynamic error) {
-        Log.e(LogTag.FBLS, 'EventChannel error', error);
-        _errorLogger.logService(action: 'EVENT_CHANNEL_ERROR', extra: 'error=$error');
+        Log.e(LogTag.FBLS, 'EventChannel error: $error');
       },
     );
     Log.d(LogTag.FBLS, 'EventChannel listener registered');
@@ -89,21 +85,12 @@ class LocationEventHandler {
       // 首次定位记录
       if (!_hasFirstLocation) {
         _hasFirstLocation = true;
-        _errorLogger.logFirstLocation(
-          lat: latitude,
-          lng: longitude,
-          accuracy: accuracy ?? 0.0,
-        );
+        Log.i(LogTag.FBLS, '首次定位成功: lat=$latitude, lng=$longitude, acc=${accuracy ?? 0.0}m');
       }
 
       // 每10次成功记录一次
       if (_successCount % 10 == 0) {
-        _errorLogger.logGpsSuccess(
-          lat: latitude,
-          lng: longitude,
-          accuracy: accuracy ?? 0.0,
-          successCount: _successCount,
-        );
+        Log.d(LogTag.FBLS, 'GPS成功($_successCount次): lat=$latitude, lng=$longitude, acc=${accuracy ?? 0.0}m');
       }
 
       // 触发回调
@@ -115,7 +102,6 @@ class LocationEventHandler {
       _saveToLocal(position);
     } catch (e, s) {
       Log.e(LogTag.FBLS, '处理位置事件异常', e, s);
-      _errorLogger.logService(action: 'EVENT_HANDLE_ERROR', extra: 'error=$e');
     }
   }
 

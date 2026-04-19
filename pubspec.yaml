@@ -48,6 +48,7 @@ dependencies:
   csv: ^6.0.0
   fluttertoast: 8.2.14
   file_picker: ^8.0.0
+  shared_preferences: ^2.2.0
 
 dev_dependencies:
   flutter_test:

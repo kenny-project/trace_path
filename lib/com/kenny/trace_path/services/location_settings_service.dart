@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'address_resolver_base.dart';
+import '../utils/logger.dart';
 
 /// 定位设置持久化
 /// 存放在应用文件目录/location_settings.json
@@ -27,7 +28,7 @@ class LocationSettingsService {
       final json = jsonDecode(content) as Map<String, dynamic>;
       settingsField = TracePathLocationSettings.fromJson(json);
     } catch (e) {
-      print('[LocationSettingsService] 加载失败: $e');
+      Log.e(LogTag.SRVC, 'LocationSettingsService 加载失败: $e');
     }
   }
 

@@ -1,4 +1,5 @@
 import 'package:path_provider/path_provider.dart';
+import '../utils/logger.dart';
 
 /// 轨迹存储管理器（单例）
 /// 统一管理轨迹文件的根目录，避免路径不一致问题
@@ -37,9 +38,9 @@ class TrackStorageManager {
       final dir = await getApplicationDocumentsDirectory();
       _rootPath = '${dir.path}/$_folderName';
       _initialized = true;
-      print('[TrackStorageManager] 初始化完成: $_rootPath');
+      Log.i(LogTag.STORAGE, 'TrackStorageManager 初始化完成: $_rootPath');
     } catch (e) {
-      print('[TrackStorageManager] 初始化失败: $e');
+      Log.e(LogTag.STORAGE, 'TrackStorageManager 初始化失败: $e');
       rethrow;
     }
   }

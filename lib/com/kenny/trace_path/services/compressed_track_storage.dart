@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:geolocator/geolocator.dart';
+import '../utils/logger.dart';
 import 'track_storage_manager.dart';
 import 'track_recorder.dart';
 import '../proto/track_message.dart';
@@ -88,7 +89,7 @@ class CompressedTrackStorage implements TrackStorage {
     if (point.latitude.isNaN || point.latitude.isInfinite ||
         point.longitude.isNaN || point.longitude.isInfinite ||
         (point.latitude == 0 && point.longitude == 0)) {
-      print('[CompressedTrackStorage] 跳过无效坐标: lat=${point.latitude}, lng=${point.longitude}');
+      Log.w(LogTag.STORAGE, 'CompressedTrackStorage 跳过无效坐标: lat=${point.latitude}, lng=${point.longitude}');
       return;
     }
 
@@ -123,9 +124,9 @@ class CompressedTrackStorage implements TrackStorage {
       // 追加写入轨迹点
       await file.writeAsBytes(encoded, mode: FileMode.append);
 
-      print('[CompressedTrackStorage] 写入轨迹点: ts=${compressed.timestampMs}, lat=${compressed.latitude}');
+      Log.d(LogTag.STORAGE,'CompressedTrackStorage 写入轨迹点: ts=${compressed.timestampMs}, lat=${compressed.latitude}');
     } catch (e) {
-      print('[CompressedTrackStorage] 写入失败: $e');
+      Log.d(LogTag.STORAGE,'CompressedTrackStorage 写入失败: $e');
     }
   }
 
@@ -168,7 +169,7 @@ class CompressedTrackStorage implements TrackStorage {
 
       return points;
     } catch (e) {
-      print('[CompressedTrackStorage] 读取失败: $e');
+      Log.d(LogTag.STORAGE,'CompressedTrackStorage 读取失败: $e');
       return [];
     }
   }
@@ -181,10 +182,10 @@ class CompressedTrackStorage implements TrackStorage {
 
       if (await file.exists()) {
         await file.delete();
-        print('[CompressedTrackStorage] 删除轨迹文件: ${file.path}');
+        Log.d(LogTag.STORAGE,'CompressedTrackStorage 删除轨迹文件: ${file.path}');
       }
     } catch (e) {
-      print('[CompressedTrackStorage] 删除失败: $e');
+      Log.d(LogTag.STORAGE,'CompressedTrackStorage 删除失败: $e');
     }
   }
 
@@ -213,13 +214,13 @@ class CompressedTrackStorage implements TrackStorage {
   @override
   Future<void> syncToServer(String phoneNumber) async {
     // TODO: 实现服务器上报
-    print('[CompressedTrackStorage] syncToServer: 待实现');
+    Log.d(LogTag.STORAGE,'CompressedTrackStorage syncToServer: 待实现');
   }
 
   @override
   Future<void> pullFromServer(String phoneNumber) async {
     // TODO: 实现服务器拉取
-    print('[CompressedTrackStorage] pullFromServer: 待实现');
+    Log.d(LogTag.STORAGE,'CompressedTrackStorage pullFromServer: 待实现');
   }
 
   /// 创建文件头

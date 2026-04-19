@@ -3,6 +3,24 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+/// 默认Tag列表（用于首次进入页面时展示）
+const _defaultTags = ['ALFS', 'FBLS', 'TRACK', 'LocationPlugin', 'APP', 'GPS_FAIL', 'GPS_OK', 'NETWORK_FAIL', 'DEBUG'];
+
+/// 日志行数据（包含原始行号）
+class LogLine {
+  final String fileName;
+  final int lineNumber;
+  final String content;
+  final String? tag;
+
+  LogLine({
+    required this.fileName,
+    required this.lineNumber,
+    required this.content,
+    this.tag,
+  });
+}
+
 /// 错误日志标签类型
 enum ErrorTag {
   gpsFail('[GPS_FAIL]'),
@@ -40,9 +58,6 @@ class ErrorLoggerService {
 
   // 写入控制信号
   final _controller = StreamController<void>.broadcast();
-
-  // 落盘白名单：null 表示所有 Tag 都落盘，非 null 表示只落盘这些 Tag
-  static Set<String>? _persistEnabledTags;
 
   /// 初始化，获取日志目录路径
   Future<void> init() async {
@@ -156,11 +171,6 @@ class ErrorLoggerService {
   /// 记录原生日志（异步写入，不阻塞）
   /// 原生日志和 Flutter 日志都写入同一个文件
   Future<void> logNative(String level, String tag, String message) async {
-    // 检查是否需要落盘
-    if (_persistEnabledTags != null && !_persistEnabledTags!.contains(tag)) {
-      return; // 不在白名单中，跳过落盘
-    }
-
     if (_logDirPath == null) {
       await init();
     }
@@ -170,28 +180,6 @@ class ErrorLoggerService {
 
     _writeQueue.add(logLine);
     _scheduleProcess();
-  }
-
-  /// 设置只落盘哪些 Tag 的日志
-  /// [tags] 要落盘的 Tag 集合，null 表示所有都落盘
-  static void setPersistEnabledTags(Set<String>? tags) {
-    _persistEnabledTags = tags;
-  }
-
-  /// 添加一个 Tag 到落盘白名单
-  static void addPersistEnabledTag(String tag) {
-    _persistEnabledTags ??= {};
-    _persistEnabledTags!.add(tag);
-  }
-
-  /// 移除一个 Tag 从落盘白名单
-  static void removePersistEnabledTag(String tag) {
-    _persistEnabledTags?.remove(tag);
-  }
-
-  /// 清空落盘白名单，恢复到所有 Tag 都落盘
-  static void clearPersistEnabledTags() {
-    _persistEnabledTags = null;
   }
 
   /// 记录应用启动
@@ -280,15 +268,25 @@ class ErrorLoggerService {
     await log(ErrorTag.debug, message);
   }
 
-  /// 执行文件轮转
+  /// 执行文件轮转（最多保留5个历史文件）
   Future<void> _rotateFile() async {
     final file = File('$_logDirPath/$_logFileName');
-    final log1 = File('$_logDirPath/$_logFileName.1');
-    final log2 = File('$_logDirPath/$_logFileName.2');
 
     try {
-      if (await log2.exists()) await log2.delete();
-      if (await log1.exists()) await log1.rename('$_logDirPath/$_logFileName.2');
+      // 删除最旧的 .4 文件
+      final log4 = File('$_logDirPath/$_logFileName.4');
+      if (await log4.exists()) await log4.delete();
+
+      // 依次轮转 .3 -> .4, .2 -> .3, .1 -> .2
+      for (int i = 3; i >= 1; i--) {
+        final current = File('$_logDirPath/$_logFileName.$i');
+        final next = File('$_logDirPath/$_logFileName.${i + 1}');
+        if (await current.exists()) {
+          await current.rename(next.path);
+        }
+      }
+
+      // 当前文件 -> .1
       await file.rename('$_logDirPath/$_logFileName.1');
       await file.writeAsString('');
     } catch (e) {
@@ -312,7 +310,7 @@ class ErrorLoggerService {
     }
   }
 
-  /// 读取所有日志文件
+  /// 读取所有日志文件（支持最多5个历史文件）
   Future<Map<String, String>> readAllLogs() async {
     if (_logDirPath == null) await init();
 
@@ -327,21 +325,14 @@ class ErrorLoggerService {
       }
     }
 
-    final log1 = File('$_logDirPath/$_logFileName.1');
-    if (await log1.exists()) {
-      try {
-        result['error.log.1'] = await log1.readAsString();
-      } catch (e) {
-        result['error.log.1'] = '读取失败: $e';
-      }
-    }
-
-    final log2 = File('$_logDirPath/$_logFileName.2');
-    if (await log2.exists()) {
-      try {
-        result['error.log.2'] = await log2.readAsString();
-      } catch (e) {
-        result['error.log.2'] = '读取失败: $e';
+    for (int i = 1; i <= 4; i++) {
+      final logFile = File('$_logDirPath/$_logFileName.$i');
+      if (await logFile.exists()) {
+        try {
+          result['error.log.$i'] = await logFile.readAsString();
+        } catch (e) {
+          result['error.log.$i'] = '读取失败: $e';
+        }
       }
     }
 
@@ -381,6 +372,71 @@ class ErrorLoggerService {
 
   /// 获取队列中待写入的日志数量
   int get pendingLogs => _writeQueue.length;
+
+  /// 从日志内容中提取所有唯一的Tag
+  /// [logContent] 原始日志内容
+  /// 返回Tag列表（按发现顺序）
+  Set<String> _extractTagsFromContent(String logContent) {
+    final tags = <String>{};
+    // 匹配 [TAG] 格式的Tag
+    final tagRegex = RegExp(r'\[([A-Z_]+)\]');
+    for (final match in tagRegex.allMatches(logContent)) {
+      tags.add(match.group(1)!);
+    }
+    return tags;
+  }
+
+  /// 获取所有日志文件中的唯一Tag列表（首次扫描时调用）
+  /// 返回所有发现的Tag，包含默认Tag列表
+  Future<Set<String>> getUniqueTags() async {
+    if (_logDirPath == null) await init();
+
+    final allTags = <String>{..._defaultTags};
+    final logs = await readAllLogs();
+
+    for (final content in logs.values) {
+      allTags.addAll(_extractTagsFromContent(content));
+    }
+
+    return allTags;
+  }
+
+  /// 读取所有日志并按Tag过滤
+  /// [selectedTags] 要显示的Tag集合，null表示显示所有
+  /// 返回按文件组织的日志行列表
+  Future<List<LogLine>> readLogsWithFilter(Set<String>? selectedTags) async {
+    if (_logDirPath == null) await init();
+
+    final result = <LogLine>[];
+    final logs = await readAllLogs();
+
+    for (final entry in logs.entries) {
+      final fileName = entry.key;
+      final content = entry.value;
+      final lines = content.split('\n');
+
+      for (int i = 0; i < lines.length; i++) {
+        final line = lines[i];
+        if (line.isEmpty) continue;
+
+        // 提取Tag
+        final tagMatch = RegExp(r'\[([A-Z_]+)\]').firstMatch(line);
+        final tag = tagMatch?.group(1);
+
+        // 如果没有选择过滤条件，或Tag在选中列表中，则添加
+        if (selectedTags == null || selectedTags.isEmpty || (tag != null && selectedTags.contains(tag))) {
+          result.add(LogLine(
+            fileName: fileName,
+            lineNumber: i + 1,
+            content: line,
+            tag: tag,
+          ));
+        }
+      }
+    }
+
+    return result;
+  }
 
   String _formatTimestamp(DateTime t) {
     return '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} '

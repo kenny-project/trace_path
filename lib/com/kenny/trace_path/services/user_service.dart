@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import '../utils/logger.dart';
 
 /// 用户模型
 class User {
@@ -33,7 +34,7 @@ class FileBasedUserStorage implements UserStorage {
       final Map<String, dynamic> json = jsonDecode(content);
       return User(phoneNumber: json['phoneNumber'] as String);
     } catch (e) {
-      print('[FileBasedUserStorage] 加载失败: $e');
+      Log.e(LogTag.SRVC, 'FileBasedUserStorage 加载失败: $e');
       return null;
     }
   }
@@ -46,7 +47,7 @@ class FileBasedUserStorage implements UserStorage {
       final json = {'phoneNumber': user?.phoneNumber};
       await file.writeAsString(jsonEncode(json));
     } catch (e) {
-      print('[FileBasedUserStorage] 保存失败: $e');
+      Log.e(LogTag.SRVC, 'FileBasedUserStorage 保存失败: $e');
     }
   }
 
@@ -59,7 +60,7 @@ class FileBasedUserStorage implements UserStorage {
         await file.delete();
       }
     } catch (e) {
-      print('[FileBasedUserStorage] 删除失败: $e');
+      Log.e(LogTag.SRVC, 'FileBasedUserStorage 删除失败: $e');
     }
   }
 }
@@ -102,9 +103,9 @@ class UserService {
   Future<void> _syncPhoneToNative(String phoneNumber) async {
     try {
       await _channel.invokeMethod('setPhoneNumber', {'phoneNumber': phoneNumber});
-      print('[UserService] 同步手机号到原生: $phoneNumber');
+      Log.d(LogTag.SRVC, '同步手机号到原生: $phoneNumber');
     } catch (e) {
-      print('[UserService] 同步手机号失败: $e');
+      Log.e(LogTag.SRVC, '同步手机号失败: $e');
     }
   }
 

@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'error_logger_service.dart';
+import '../utils/logger.dart';
 import 'location_provider.dart';
 
 /// Android 原生定位提供者实现
@@ -14,17 +14,8 @@ import 'location_provider.dart';
 class NativeLocationProvider implements LocationProvider {
   static const _channel = MethodChannel('com.kenny.trace_path/native_location');
 
-  final ErrorLoggerService _errorLogger = ErrorLoggerService();
-
   @override
   String get name => 'NativeLocationProvider';
-
-  /// 统一日志方法：同时输出到logcat和文件
-  void log(String msg) {
-    final timestamp = DateTime.now().toString().substring(11, 23);
-    print('[$timestamp] [NativeLocationProvider] $msg');
-    _errorLogger.logDebug(msg);
-  }
 
   // 默认超时时间：GPS 30秒 + 网络15秒 = 总共45秒
   static const int _defaultGpsTimeoutMs = 30000;
@@ -39,16 +30,14 @@ class NativeLocationProvider implements LocationProvider {
       // 检查服务是否启用
       final serviceEnabled = await isLocationServiceEnabled();
       if (!serviceEnabled) {
-        print('[NativeLocationProvider] 定位服务未开启');
-        await _errorLogger.logGpsFail(reason: 'LOCATION_SERVICE_DISABLED');
+        Log.w(LogTag.FBLS, '定位服务未开启');
         return null;
       }
 
       // 检查权限
       final hasPermission = await checkPermission();
       if (!hasPermission) {
-        print('[NativeLocationProvider] 定位权限被拒绝');
-        await _errorLogger.logPermission(permission: 'FBLS', reason: 'PERMISSION_DENIED');
+        Log.w(LogTag.FBLS, '定位权限被拒绝');
         return null;
       }
 
@@ -57,11 +46,7 @@ class NativeLocationProvider implements LocationProvider {
       final timeoutMs = (timeLimit?.inMilliseconds ?? (_defaultGpsTimeoutMs + _defaultNetTimeoutMs)).toInt();
       final useHighAccuracy = accuracy == ProviderAccuracy.best;
 
-      log('调用原生定位: useHighAccuracy=$useHighAccuracy, timeout=${timeoutMs}ms');
-      await _errorLogger.logService(
-        action: 'NATIVE_LOCATION_REQUEST',
-        extra: 'useHighAccuracy=$useHighAccuracy, timeoutMs=$timeoutMs',
-      );
+      Log.d(LogTag.FBLS, '调用原生定位: useHighAccuracy=$useHighAccuracy, timeout=${timeoutMs}ms');
 
       final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getCurrentLocation', {
         'useHighAccuracy': useHighAccuracy,
@@ -72,8 +57,7 @@ class NativeLocationProvider implements LocationProvider {
       );
 
       if (result == null) {
-        log('原生定位返回 null');
-        await _errorLogger.logGpsFail(reason: 'NATIVE_RETURNED_NULL');
+        Log.w(LogTag.FBLS, '原生定位返回 null');
         return null;
       }
 
@@ -87,8 +71,7 @@ class NativeLocationProvider implements LocationProvider {
       final timestamp = (result['timestamp'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch;
 
       if (latitude == null || longitude == null) {
-        log('原生定位返回无效坐标: lat=$latitude, lng=$longitude');
-        await _errorLogger.logGpsFail(reason: 'INVALID_COORDINATES');
+        Log.e(LogTag.FBLS, '原生定位返回无效坐标: lat=$latitude, lng=$longitude');
         return null;
       }
 
@@ -106,32 +89,13 @@ class NativeLocationProvider implements LocationProvider {
         headingAccuracy: 0.0, // Android 原生不提供
       );
 
-      log('原生定位成功: lat=$latitude, lng=$longitude, acc=${accuracyVal}m');
-      await _errorLogger.logGpsSuccess(
-        lat: latitude,
-        lng: longitude,
-        accuracy: accuracyVal,
-      );
+      Log.i(LogTag.FBLS, '原生定位成功: lat=$latitude, lng=$longitude, acc=${accuracyVal}m');
       return position;
     } on PlatformException catch (e) {
-      print('[NativeLocationProvider] PlatformException: code=${e.code}, message=${e.message}');
-      String reason = 'NATIVE_PLATFORM_EXCEPTION';
-      if (e.code == 'PERMISSION_DENIED') {
-        reason = 'NATIVE_PERMISSION_DENIED';
-      } else if (e.code == 'SERVICE_DISABLED') {
-        reason = 'NATIVE_SERVICE_DISABLED';
-      } else if (e.code == 'TIMEOUT') {
-        reason = 'NATIVE_TIMEOUT';
-      }
-      await _errorLogger.logGpsFail(reason: reason, extra: 'code=${e.code}, msg=${e.message}');
+      Log.e(LogTag.FBLS, 'PlatformException: code=${e.code}, message=${e.message}');
       return null;
     } catch (e, st) {
-      print('[NativeLocationProvider] getCurrentPosition 异常: type=${e.runtimeType}, message=$e');
-      print('[NativeLocationProvider] stackTrace: $st');
-      await _errorLogger.logGpsFail(
-        reason: 'EXCEPTION',
-        extra: 'type=${e.runtimeType}, msg=$e\n$st',
-      );
+      Log.e(LogTag.FBLS, 'getCurrentPosition 异常: type=${e.runtimeType}, message=$e, stackTrace: $st');
       return null;
     }
   }
@@ -147,7 +111,7 @@ class NativeLocationProvider implements LocationProvider {
       if (permission.isPermanentlyDenied) return false;
       return true;
     } catch (e) {
-      print('[NativeLocationProvider] checkPermission 异常: $e');
+      Log.e(LogTag.FBLS, 'checkPermission 异常: $e');
       return false;
     }
   }
@@ -158,7 +122,7 @@ class NativeLocationProvider implements LocationProvider {
       final result = await _channel.invokeMethod<bool>('isLocationServiceEnabled');
       return result ?? false;
     } catch (e) {
-      print('[NativeLocationProvider] isLocationServiceEnabled 异常: $e');
+      Log.e(LogTag.FBLS, 'isLocationServiceEnabled 异常: $e');
       return false;
     }
   }

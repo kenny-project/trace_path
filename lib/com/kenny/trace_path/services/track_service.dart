@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
+import '../utils/logger.dart';
 import 'track_recorder.dart';
 import 'track_storage_manager.dart';
 
@@ -29,7 +30,7 @@ class TrackService {
       await TrackRecorder().deleteDay(phoneNumber, year, month, day);
       return true;
     } catch (e) {
-      print('[TrackService] 删除失败: $e');
+      Log.e(LogTag.TRACK, 'TrackService 删除失败: $e');
       return false;
     }
   }
@@ -58,10 +59,10 @@ class TrackService {
         altitudeAccuracy: 0,
         speedAccuracy: 0,
       ));
-      print('[TrackService] 保存成功: lat=$lat, lng=$lng');
+      Log.d(LogTag.TRACK, 'TrackService 保存成功: lat=$lat, lng=$lng');
       return true;
     } catch (e) {
-      print('[TrackService] 保存失败: $e');
+      Log.e(LogTag.TRACK, 'TrackService 保存失败: $e');
       return false;
     }
   }
@@ -71,8 +72,8 @@ class TrackService {
     try {
       // 通过 TrackRecorder 读取（现在是 CompressedTrackStorage）
       final points = await TrackRecorder().readDay(phoneNumber, year, month, day);
-      print('[TrackService] 读取轨迹: ${points.length} 个点');
-      
+      Log.d(LogTag.TRACK, 'TrackService 读取轨迹: ${points.length} 个点');
+
       if (points.isEmpty) {
         return [];
       }
@@ -114,7 +115,7 @@ class TrackService {
               p.toLatLng(),
             );
             if (jump > maxJumpMeters) {
-              print('[TrackService] 跳过跳变过大的点: ${jump.toStringAsFixed(0)}m (时间间隔: ${timeDiffSeconds}s)');
+              Log.w(LogTag.TRACK, 'TrackService 跳过跳变过大的点: ${jump.toStringAsFixed(0)}m (时间间隔: ${timeDiffSeconds}s)');
               continue;
             }
           }
@@ -126,13 +127,13 @@ class TrackService {
 
       final removed = convertedPoints.length - validPoints.length;
       if (removed > 0) {
-        print('[TrackService] 过滤掉 $removed 个无效坐标点');
+        Log.d(LogTag.TRACK, 'TrackService 过滤掉 $removed 个无效坐标点');
       }
 
-      print('[TrackService] 转换成功: ${validPoints.length} 个点');
+      Log.d(LogTag.TRACK, 'TrackService 转换成功: ${validPoints.length} 个点');
       return validPoints;
     } catch (e) {
-      print('[TrackService] 读取失败: $e');
+      Log.e(LogTag.TRACK, 'TrackService 读取失败: $e');
       return [];
     }
   }
@@ -182,7 +183,7 @@ class TrackService {
         }
       }
     } catch (e) {
-      print('[TrackService] 获取层级失败: $e');
+      Log.e(LogTag.TRACK, 'TrackService 获取层级失败: $e');
     }
 
     return hierarchy;
@@ -199,7 +200,7 @@ class TrackService {
     try {
       return await TrackRecorder().getFileModifyTime(phoneNumber, year, month, day);
     } catch (e) {
-      print('[TrackService] 获取文件修改时间失败: $e');
+      Log.e(LogTag.TRACK, 'TrackService 获取文件修改时间失败: $e');
     }
     return null;
   }
