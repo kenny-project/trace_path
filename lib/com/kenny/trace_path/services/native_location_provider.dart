@@ -46,7 +46,7 @@ class NativeLocationProvider implements LocationProvider {
       final timeoutMs = (timeLimit?.inMilliseconds ?? (_defaultGpsTimeoutMs + _defaultNetTimeoutMs)).toInt();
       final useHighAccuracy = accuracy == ProviderAccuracy.best;
 
-      Log.d(LogTag.FBLS, '调用原生定位: useHighAccuracy=$useHighAccuracy, timeout=${timeoutMs}ms');
+      Log.d(LogTag.FBLS, 'getCurrentPosition: useHighAccuracy=$useHighAccuracy, timeout=${timeoutMs}ms');
 
       final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getCurrentLocation', {
         'useHighAccuracy': useHighAccuracy,
@@ -57,7 +57,7 @@ class NativeLocationProvider implements LocationProvider {
       );
 
       if (result == null) {
-        Log.w(LogTag.FBLS, '原生定位返回 null');
+        Log.w(LogTag.FBLS, 'getCurrentPosition fail, result is null');
         return null;
       }
 
@@ -71,7 +71,7 @@ class NativeLocationProvider implements LocationProvider {
       final timestamp = (result['timestamp'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch;
 
       if (latitude == null || longitude == null) {
-        Log.e(LogTag.FBLS, '原生定位返回无效坐标: lat=$latitude, lng=$longitude');
+        Log.e(LogTag.FBLS, 'getCurrentPosition fail,  pos=$latitude, $longitude');
         return null;
       }
 
@@ -95,7 +95,7 @@ class NativeLocationProvider implements LocationProvider {
       Log.e(LogTag.FBLS, 'PlatformException: code=${e.code}, message=${e.message}');
       return null;
     } catch (e, st) {
-      Log.e(LogTag.FBLS, 'getCurrentPosition 异常: type=${e.runtimeType}, message=$e, stackTrace: $st');
+      Log.e(LogTag.FBLS, 'Exception type=${e.runtimeType}, message=$e, stackTrace: $st');
       return null;
     }
   }

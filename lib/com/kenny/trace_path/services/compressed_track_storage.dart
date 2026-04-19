@@ -83,6 +83,9 @@ class CompressedTrackStorage implements TrackStorage {
   /// 获取存储管理器
   TrackStorageManager get _manager => TrackStorageManager();
 
+  /// 最近写入的时间戳（毫秒），用于快速去重
+  int? _lastWrittenTimestamp;
+
   @override
   Future<void> write(String phoneNumber, TrackPoint point) async {
     // 过滤无效坐标写入
@@ -94,6 +97,14 @@ class CompressedTrackStorage implements TrackStorage {
     }
 
     try {
+      final ts = point.timestamp.millisecondsSinceEpoch;
+
+      // 快速去重：同 timestamp 短时间内不重复写入
+      if (_lastWrittenTimestamp != null && _lastWrittenTimestamp == ts) {
+        return;
+      }
+      _lastWrittenTimestamp = ts;
+
       final compressed = CompressedTrackPoint.fromTrackPoint(point);
       final dirPath = _manager.userDir(phoneNumber);
       final dir = Directory(dirPath);
@@ -124,9 +135,9 @@ class CompressedTrackStorage implements TrackStorage {
       // 追加写入轨迹点
       await file.writeAsBytes(encoded, mode: FileMode.append);
 
-      Log.d(LogTag.STORAGE,'CompressedTrackStorage 写入轨迹点: ts=${compressed.timestampMs}, lat=${compressed.latitude}');
+      Log.d(LogTag.STORAGE,'CompressedTrackStorage::write ts=${compressed.timestampMs}, pos=${compressed.latitude},${compressed.longitude}');
     } catch (e) {
-      Log.d(LogTag.STORAGE,'CompressedTrackStorage 写入失败: $e');
+      Log.d(LogTag.STORAGE,'CompressedTrackStorage::write failed: $e');
     }
   }
 

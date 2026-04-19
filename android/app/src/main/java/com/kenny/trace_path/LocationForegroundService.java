@@ -465,10 +465,10 @@ public class LocationForegroundService extends Service {
     private void sendLocationToFlutter(Location location) {
         EventChannel.EventSink sink = eventSink != null ? eventSink : LocationPluginBinder.getEventSink();
         if (sink == null) {
-            TraceLog.w(ALFS, "sendLocationToFlutter: sink is null, event dropped! lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+            TraceLog.e(ALFS, "sendLocationToFlutter fail, sink is null, event dropped!");
             return;
         }
-        TraceLog.d(ALFS, "sendLocationToFlutter: sink available, sending lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
+        TraceLog.d(ALFS, "sendLocationToFlutter debug, sink available, sending pos=" + location.getLatitude() + "," + location.getLongitude());
 
         java.util.Map<String, Object> locationMap = new java.util.HashMap<>();
         locationMap.put("latitude", location.getLatitude());
@@ -485,7 +485,7 @@ public class LocationForegroundService extends Service {
                 TraceLog.d(ALFS, "Location sent to Flutter: lat=" + location.getLatitude() + ", lng=" + location.getLongitude());
             });
         } catch (Exception e) {
-            TraceLog.e(ALFS, "Error sending location to Flutter", e);
+            TraceLog.e(ALFS, "sendLocationToFlutter Failed, error sending location to Flutter: ", e);
         }
 
         saveLocationToFile(location);
@@ -504,9 +504,9 @@ public class LocationForegroundService extends Service {
                 writer.flush();
                 writer.close();
             }
-            TraceLog.d(ALFS, "Track file initialized: " + trackFile.getAbsolutePath());
+            TraceLog.d(ALFS, "initTrackFile debug, track file initialized: " + trackFile.getAbsolutePath());
         } catch (Exception e) {
-            TraceLog.e(ALFS, "Failed to init track file", e);
+            TraceLog.e(ALFS, "initTrackFile Failed, init track file", e);
         }
     }
 
@@ -529,11 +529,11 @@ public class LocationForegroundService extends Service {
             writer.append(line);
             writer.flush();
             writer.close();
-            TraceLog.d(ALFS, "Location saved to file: lat=" + latitude + ", lng=" + longitude);
+            TraceLog.d(ALFS, "saveLocationToFile debug, pos=" + latitude + "," + longitude);
         } catch (IOException e) {
-            TraceLog.e(ALFS, "Failed to save location to file", e);
+            TraceLog.e(ALFS, "saveLocationToFile Failed to save location to file", e);
         } catch (Exception e) {
-            TraceLog.e(ALFS, "Failed to save location to file", e);
+            TraceLog.e(ALFS, "saveLocationToFile Failed to save location to file", e);
         }
     }
 
@@ -588,7 +588,7 @@ public class LocationForegroundService extends Service {
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .build();
 
-        TraceLog.d(ALFS, "buildStartNotification END, hashCode=" + notification.hashCode());
+        TraceLog.d(ALFS, "buildStartNotification debug, hashCode=" + notification.hashCode());
         return notification;
     }
 
@@ -607,8 +607,6 @@ public class LocationForegroundService extends Service {
 
         String title = "TracePath [" + source + "] 正在运行";
         String content = mode + " | " + locationText + " | " + accuracyText + " | " + updateTime;
-
-        TraceLog.d(ALFS, "buildNotification: title=" + title + ", content=" + content + ", loc=" + loc.getLatitude() + "," + loc.getLongitude());
 
         Intent notificationIntent = new Intent(this, MainActivity.class);
         notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -636,7 +634,7 @@ public class LocationForegroundService extends Service {
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .build();
 
-        TraceLog.d(ALFS, "buildNotification END, hashCode=" + notification.hashCode() + ", content=" + content);
+        TraceLog.d(ALFS, "buildNotification END, hashCode=" + notification.hashCode() + ", updateTime=" + updateTime);
         return notification;
     }
 
@@ -647,7 +645,6 @@ public class LocationForegroundService extends Service {
             TraceLog.w(ALFS, "updateNotification: loc is null");
             return;
         }
-        TraceLog.d(ALFS, "updateNotification START: pos=" + loc.getLatitude() + "," + loc.getLongitude());
 
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) {
@@ -661,7 +658,7 @@ public class LocationForegroundService extends Service {
             return;
         }
         manager.notify(NOTIFICATION_ID, notification);
-        TraceLog.d(ALFS, "updateNotification END");
+        TraceLog.d(ALFS, "updateNotification pos=" + loc.getLatitude() + "," + loc.getLongitude());
     }
 
     @Override
