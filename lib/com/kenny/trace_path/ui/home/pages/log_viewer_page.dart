@@ -15,6 +15,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
   final ErrorLoggerService _errorLogger = ErrorLoggerService();
   final ScrollController _scrollController = ScrollController();
   final _spKeySelectedTags = 'log_viewer_selected_tags';
+  final _spKeyShowAll = 'log_viewer_show_all';
 
   List<LogLine> _allLogs = []; // 所有日志（用于统计各tag数量）
   List<LogLine> _filteredLogs = []; // 过滤后的日志（用于显示）
@@ -46,6 +47,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       _saveSelectedTags();
+      _saveShowAll();
     }
   }
 
@@ -62,6 +64,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
         final allTags = await _errorLogger.getUniqueTags();
         _availableTags = allTags;
         _selectedTags = await _loadSelectedTags();
+        _showAll = await _loadShowAll();
         _tagsInitialized = true;
       }
 
@@ -106,6 +109,21 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
       // showAll 模式或无选中 tag：显示全部
       _filteredLogs = List.from(_allLogs);
     }
+  }
+
+  Future<bool> _loadShowAll() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      return sp.getBool(_spKeyShowAll) ?? true;
+    } catch (_) {}
+    return true;
+  }
+
+  Future<void> _saveShowAll() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setBool(_spKeyShowAll, _showAll);
+    } catch (_) {}
   }
 
   Future<Set<String>> _loadSelectedTags() async {
@@ -153,6 +171,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
       }
     });
     _saveSelectedTags();
+    _saveShowAll();
     _applyFilter();
     if (mounted) {
       setState(() {});
@@ -174,6 +193,7 @@ class _LogViewerPageState extends State<LogViewerPage> with WidgetsBindingObserv
       }
     });
     _saveSelectedTags();
+    _saveShowAll();
     _applyFilter();
     if (mounted) {
       setState(() {});

@@ -5,7 +5,6 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Looper;
-import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
@@ -53,12 +52,12 @@ public class NativeLocationHandler implements MethodChannel.MethodCallHandler {
         );
         NativeLocationHandler handler = new NativeLocationHandler(context);
         channel.setMethodCallHandler(handler);
-        Log.d(TAG, "NativeLocationHandler registered");
+        TraceLog.d(TAG, "NativeLocationHandler registered");
     }
 
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
-        Log.d(TAG, "onMethodCall: method=" + call.method + ", args=" + call.arguments());
+        TraceLog.d(TAG, "onMethodCall: method=" + call.method + ", args=" + call.arguments());
 
         switch (call.method) {
             case "getCurrentLocation":
@@ -100,18 +99,18 @@ public class NativeLocationHandler implements MethodChannel.MethodCallHandler {
                 ? ((Number) call.argument("timeoutMs")).intValue()
                 : 45000;
 
-        Log.d(TAG, "getCurrentLocation: useHighAccuracy=" + useHighAccuracy + ", timeoutMs=" + timeoutMs);
+        TraceLog.d(TAG, "getCurrentLocation: useHighAccuracy=" + useHighAccuracy + ", timeoutMs=" + timeoutMs);
 
         // 检查权限
         if (!hasLocationPermission()) {
-            Log.w(TAG, "getCurrentLocation: no permission");
+            TraceLog.w(TAG, "getCurrentLocation: no permission");
             result.error("PERMISSION_DENIED", "Location permission not granted", null);
             return;
         }
 
         // 检查服务是否启用
         if (!isLocationServiceEnabled()) {
-            Log.w(TAG, "getCurrentLocation: location service disabled");
+            TraceLog.w(TAG, "getCurrentLocation: location service disabled");
             result.error("SERVICE_DISABLED", "Location service is disabled", null);
             return;
         }
@@ -123,18 +122,18 @@ public class NativeLocationHandler implements MethodChannel.MethodCallHandler {
                     null // 使用最后一次已知位置（如果足够新鲜）或请求新的
             ).addOnSuccessListener(location -> {
                 if (location != null) {
-                    Log.d(TAG, "getCurrentLocation success: lat=" + location.getLatitude()
+                    TraceLog.d(TAG, "getCurrentLocation success: lat=" + location.getLatitude()
                             + ", lng=" + location.getLongitude()
                             + ", acc=" + location.getAccuracy());
                     Map<String, Object> positionMap = locationToMap(location);
                     result.success(positionMap);
                 } else {
-                    Log.w(TAG, "getCurrentLocation: location is null, try requesting fresh location");
+                    TraceLog.w(TAG, "getCurrentLocation: location is null, try requesting fresh location");
                     // 如果最后位置为空，尝试请求新位置
                     requestFreshLocation(useHighAccuracy, timeoutMs, result);
                 }
             }).addOnFailureListener(e -> {
-                Log.e(TAG, "getCurrentLocation failed", e);
+                TraceLog.e(TAG, "getCurrentLocation failed", e);
                 String errorCode = "LOCATION_FAILED";
                 if (e instanceof SecurityException) {
                     errorCode = "PERMISSION_DENIED";
@@ -144,7 +143,7 @@ public class NativeLocationHandler implements MethodChannel.MethodCallHandler {
                 result.error(errorCode, e.getMessage(), null);
             });
         } catch (SecurityException e) {
-            Log.e(TAG, "SecurityException in getCurrentLocation", e);
+            TraceLog.e(TAG, "SecurityException in getCurrentLocation", e);
             result.error("PERMISSION_DENIED", e.getMessage(), null);
         }
     }
@@ -164,12 +163,12 @@ public class NativeLocationHandler implements MethodChannel.MethodCallHandler {
                 fusedLocationClient.removeLocationUpdates(this);
                 Location location = locationResult.getLastLocation();
                 if (location != null) {
-                    Log.d(TAG, "requestFreshLocation success: lat=" + location.getLatitude()
+                    TraceLog.d(TAG, "requestFreshLocation success: lat=" + location.getLatitude()
                             + ", lng=" + location.getLongitude());
                     Map<String, Object> positionMap = locationToMap(location);
                     result.success(positionMap);
                 } else {
-                    Log.w(TAG, "requestFreshLocation: location is null");
+                    TraceLog.w(TAG, "requestFreshLocation: location is null");
                     result.error("TIMEOUT", "Unable to get location within timeout", null);
                 }
             }
@@ -182,11 +181,11 @@ public class NativeLocationHandler implements MethodChannel.MethodCallHandler {
             android.os.Handler mainHandler = new android.os.Handler(Looper.getMainLooper());
             mainHandler.postDelayed(() -> {
                 fusedLocationClient.removeLocationUpdates(locationCallback);
-                Log.w(TAG, "requestFreshLocation: timeout after " + timeoutMs + "ms");
+                TraceLog.w(TAG, "requestFreshLocation: timeout after " + timeoutMs + "ms");
                 result.error("TIMEOUT", "Location request timed out", null);
             }, timeoutMs);
         } catch (SecurityException e) {
-            Log.e(TAG, "SecurityException in requestFreshLocation", e);
+            TraceLog.e(TAG, "SecurityException in requestFreshLocation", e);
             result.error("PERMISSION_DENIED", e.getMessage(), null);
         }
     }
@@ -211,7 +210,7 @@ public class NativeLocationHandler implements MethodChannel.MethodCallHandler {
      */
     private void handleCheckPermission(MethodChannel.Result result) {
         boolean hasPermission = hasLocationPermission();
-        Log.d(TAG, "checkPermission: hasPermission=" + hasPermission);
+        TraceLog.d(TAG, "checkPermission: hasPermission=" + hasPermission);
         result.success(hasPermission);
     }
 
@@ -234,7 +233,7 @@ public class NativeLocationHandler implements MethodChannel.MethodCallHandler {
         boolean isEnabled = locationManager != null
                 && (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
                 || locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER));
-        Log.d(TAG, "isLocationServiceEnabled: " + isEnabled);
+        TraceLog.d(TAG, "isLocationServiceEnabled: " + isEnabled);
         result.success(isEnabled);
     }
 

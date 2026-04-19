@@ -39,7 +39,7 @@ public class MainActivity extends FlutterActivity {
             LOCATION_SERVICE_CHANNEL
         );
         methodChannel.setMethodCallHandler((call, result) -> {
-            android.util.Log.d("MainActivity", "MethodChannel: method=" + call.method + ", args=" + call.arguments());
+            TraceLog.d("MainActivity", "MethodChannel: method=" + call.method + ", args=" + call.arguments());
 
             // 定位服务方法（委托给 LocationPlugin）
             switch (call.method) {
@@ -86,7 +86,7 @@ public class MainActivity extends FlutterActivity {
                     if (phoneNumber != null) {
                         android.content.SharedPreferences prefs = getSharedPreferences("location_service_prefs", MODE_PRIVATE);
                         prefs.edit().putString("phone_number", phoneNumber).apply();
-                        android.util.Log.d("MainActivity", "setPhoneNumber: " + phoneNumber);
+                        TraceLog.d("MainActivity", "setPhoneNumber: " + phoneNumber);
                     }
                     result.success(true);
                     return;

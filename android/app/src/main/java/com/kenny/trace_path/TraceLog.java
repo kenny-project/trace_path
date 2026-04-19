@@ -51,48 +51,74 @@ public class TraceLog {
         });
     }
 
+    /// 从堆栈提取调用方的文件名和行号，格式：xxx.java:123
+    private static String _callerInfo() {
+        try {
+            StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+            // stack[0]=Thread.getStackTrace, stack[1]=_callerInfo, stack[2]=实际调用者
+            if (stack.length >= 3) {
+                StackTraceElement caller = stack[2];
+                String fileName = caller.getFileName();
+                int lineNumber = caller.getLineNumber();
+                if (fileName != null && lineNumber > 0) {
+                    return "[" + fileName + ":" + lineNumber + "] ";
+                }
+            }
+        } catch (Exception ignored) {}
+        return "";
+    }
+
     public static void d(String tag, String message) {
-        Log.d(tag, message);
-        sendToFlutter("D", tag, message);
+        String info = _callerInfo();
+        Log.d(tag, info + message);
+        sendToFlutter("D", tag, info + message);
     }
 
     public static void i(String tag, String message) {
-        Log.i(tag, message);
-        sendToFlutter("I", tag, message);
+        String info = _callerInfo();
+        Log.i(tag, info + message);
+        sendToFlutter("I", tag, info + message);
     }
 
     public static void w(String tag, String message) {
-        Log.w(tag, message);
-        sendToFlutter("W", tag, message);
+        String info = _callerInfo();
+        Log.w(tag, info + message);
+        sendToFlutter("W", tag, info + message);
     }
 
     public static void w(String tag, String message, Throwable throwable) {
-        Log.w(tag, message, throwable);
-        sendToFlutter("W", tag, message);
+        String info = _callerInfo();
+        Log.w(tag, info + message, throwable);
+        sendToFlutter("W", tag, info + message);
     }
 
     public static void e(String tag, String message) {
-        Log.e(tag, message);
-        sendToFlutter("E", tag, message);
+        String info = _callerInfo();
+        Log.e(tag, info + message);
+        sendToFlutter("E", tag, info + message);
     }
 
     public static void e(String tag, String message, Throwable throwable) {
-        Log.e(tag, message, throwable);
-        sendToFlutter("E", tag, message);
+        String info = _callerInfo();
+        Log.e(tag, info + message, throwable);
+        sendToFlutter("E", tag, info + message);
     }
 
     public static void v(String tag, String message) {
-        Log.v(tag, message);
-        sendToFlutter("D", tag, message);
+        String info = _callerInfo();
+        Log.v(tag, info + message);
+        sendToFlutter("D", tag, info + message);
     }
 
     public static void wtf(String tag, String message) {
-        Log.wtf(tag, message);
-        sendToFlutter("E", tag, message);
+        String info = _callerInfo();
+        Log.wtf(tag, info + message);
+        sendToFlutter("E", tag, info + message);
     }
 
     public static void wtf(String tag, Throwable throwable) {
-        Log.wtf(tag, throwable);
-        sendToFlutter("E", tag, throwable.getMessage());
+        String info = _callerInfo();
+        Log.wtf(tag, info + throwable.getMessage(), throwable);
+        sendToFlutter("E", tag, info + throwable.getMessage());
     }
 }

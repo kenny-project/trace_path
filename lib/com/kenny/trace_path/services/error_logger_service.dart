@@ -378,8 +378,8 @@ class ErrorLoggerService {
   /// 返回Tag列表（按发现顺序）
   Set<String> _extractTagsFromContent(String logContent) {
     final tags = <String>{};
-    // 匹配 [TAG] 格式的Tag
-    final tagRegex = RegExp(r'\[([A-Z_]+)\]');
+    // 匹配 [TAG] 格式的Tag（支持大小写混合）
+    final tagRegex = RegExp(r'\[([A-Za-z0-9_]+)\]');
     for (final match in tagRegex.allMatches(logContent)) {
       tags.add(match.group(1)!);
     }
@@ -420,7 +420,7 @@ class ErrorLoggerService {
         if (line.isEmpty) continue;
 
         // 提取Tag
-        final tagMatch = RegExp(r'\[([A-Z_]+)\]').firstMatch(line);
+        final tagMatch = RegExp(r'\[([A-Za-z0-9_]+)\]').firstMatch(line);
         final tag = tagMatch?.group(1);
 
         // 如果没有选择过滤条件，或Tag在选中列表中，则添加

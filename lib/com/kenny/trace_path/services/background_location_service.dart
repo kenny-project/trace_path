@@ -13,7 +13,6 @@ import 'location_event_handler.dart';
 import 'location_provider.dart';
 import 'location_settings_service.dart';
 import 'native_location_provider.dart';
-import 'track_recorder.dart';
 import 'user_service.dart';
 
 /// 定位服务回调类型
@@ -107,6 +106,7 @@ class BackgroundLocationService {
   }
 
   /// 主动请求当前位置并广播到地图（Flutter 重连后恢复实时显示）
+  /// 注意：不写入存储，存储由 LocationEventHandler 通过 EventChannel 统一写入
   Future<void> _requestAndBroadcastCurrentLocation() async {
     try {
       Log.d(LogTag.FBLS, '_requestAndBroadcastCurrentLocation called');
@@ -114,7 +114,6 @@ class BackgroundLocationService {
       final position = await _locationProvider?.getCurrentPosition();
       if (position != null) {
         _broadcast(LocationEvent.position(position));
-        _saveToLocal(position);
         Log.i(LogTag.FBLS, '主动请求位置成功: lat=${position.latitude}, lng=${position.longitude}');
       } else {
         Log.w(LogTag.FBLS, '主动请求位置返回 null');
@@ -296,15 +295,6 @@ class BackgroundLocationService {
     } catch (e, s) {
       Log.e(LogTag.FBLS, 'checkRunning 异常', e, s);
       return false;
-    }
-  }
-
-  /// 保存位置到本地
-  Future<void> _saveToLocal(Position position) async {
-    try {
-      await TrackRecorder().record(position);
-    } catch (e, s) {
-      Log.e(LogTag.TRACK, 'BackgroundLocationService::saveToLocal fail', e, s);
     }
   }
 

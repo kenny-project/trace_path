@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import '../services/error_logger_service.dart';
+import 'package:trace_path/com/kenny/trace_path/services/error_logger_service.dart';
 
 /// 日志级别
 enum LogLevel {
@@ -76,7 +76,8 @@ class Log {
   ]) {
     final timestamp = DateTime.now().toString().substring(11, 23);
     final levelStr = _levelString(level);
-    final logLine = '[$timestamp] $levelStr [${tag.name}] ${tag.emoji} $message';
+    final callerInfo = _getCallerInfo();
+    final logLine = '[$timestamp] $levelStr [${tag.name}] ${tag.emoji} $callerInfo $message';
 
     // 输出到控制台
     if (kDebugMode) {
@@ -88,7 +89,30 @@ class Log {
     }
 
     // 写入 ErrorLoggerService（异步，不阻塞）
-    ErrorLoggerService().logNative(levelStr, tag.name, error != null ? '$message $error' : message);
+    final fileMessage = '$callerInfo $message${error != null ? ' $error' : ''}';
+    ErrorLoggerService().logNative(levelStr, tag.name, fileMessage);
+  }
+
+  /// 从堆栈提取调用方的文件名和行号
+  /// 格式：xxx.dart:123
+  static String _getCallerInfo() {
+    try {
+      final stack = StackTrace.current.toString().split('\n');
+      // stack[0]=Log._getCallerInfo, stack[1]=Log._log, stack[2]=Log.d/i/w/e, stack[3]=实际调用者
+      if (stack.length >= 4) {
+        final frame = stack[3].trim();
+        // 匹配 (path/file.dart:line:col) → 提取 path/file.dart:line
+        final match = RegExp(r'\(([^)]+:\d+)').firstMatch(frame);
+        if (match != null) {
+          final full = match.group(1)!;
+          // 提取最后一个路径段（文件名）
+          final lastSlash = full.lastIndexOf('/');
+          final fileAndLine = lastSlash >= 0 ? full.substring(lastSlash + 1) : full;
+          return '[$fileAndLine]';
+        }
+      }
+    } catch (_) {}
+    return '';
   }
 
   static String _levelString(LogLevel level) {
